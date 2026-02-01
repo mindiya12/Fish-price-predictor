@@ -1,0 +1,37 @@
+# Dependencies
+node_modules
+
+# Next.js build output
+.next
+out
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.log
+
+# Test output
+coverage
+
+# Env files (never bake into image)
+.env
+.env.*
+!.env.example
+
+# Local/dev tooling
+.vscode
+.idea
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Git
+.git
+.gitignore
+
+# Docker
+Dockerfile*
+docker-compose*.yml

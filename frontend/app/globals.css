@@ -1,0 +1,43 @@
+@import "tailwindcss";
+
+:root {
+  --background: #F8FAFC; /* your Background */
+  --foreground: #0f172a;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --color-brand-primary: #0A7AFF;
+  --color-brand-secondary: #1E40AF;
+  --color-brand-accent: #38BDF8;
+  --color-brand-light: #DBEAFE;
+  --color-brand-success: #10B981;
+  --color-brand-alert: #EF4444;
+  --color-brand-neutral: #64748B;
+  --color-brand-background: #F8FAFC;
+  --color-brand-white: #FFFFFF;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+@keyframes heroFadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes heroFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
