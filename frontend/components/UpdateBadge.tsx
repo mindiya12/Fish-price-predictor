@@ -30,7 +30,6 @@ export default function UpdateBadge({
   const lastUpdated = useMemo(() => new Date(lastUpdatedIso), [lastUpdatedIso]);
   const nextUpdate = useMemo(() => new Date(nextUpdateIso), [nextUpdateIso]);
 
-  const [mounted, setMounted] = useState(false);
   const [nowMs, setNowMs] = useState<number>(0);
 
   const timeFormatter = useMemo(
@@ -45,7 +44,7 @@ export default function UpdateBadge({
   );
 
   useEffect(() => {
-    setMounted(true);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setNowMs(Date.now());
     const t = setInterval(() => setNowMs(Date.now()), 1000);
     return () => clearInterval(t);
@@ -55,7 +54,7 @@ export default function UpdateBadge({
   const nextUpdateText = timeFormatter.format(nextUpdate).replace(/\u202f/g, " ");
 
   const countdown =
-    mounted ? formatCountdown(nextUpdate.getTime() - nowMs) : "--:--:--";
+    nowMs > 0 ? formatCountdown(nextUpdate.getTime() - nowMs) : "--:--:--";
 
   return (
     <div className="rounded-lg bg-brand-light px-3 py-2 text-xs text-slate-700 ring-1 ring-black/5">
