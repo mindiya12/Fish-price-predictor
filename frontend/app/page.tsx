@@ -1,3 +1,6 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 
@@ -8,13 +11,47 @@ import DownloadCsvButton from "@/components/DownloadCsvButton";
 import HistoricalChartSection from "@/components/HistoricalChartSection";
 import ForecastSummaryCards from "@/components/ForecastSummaryCards";
 
-import { detailedForecast7Days } from "@/lib/dummyDataForecast";
+import { getLatestForecast } from "@/lib/api";
 
 export default function HomePage() {
-  const lastUpdatedIso = "2025-12-27T00:05:00+05:30";
-  const nextUpdateIso = "2025-12-28T00:05:00+05:30";
+  const [forecastData, setForecastData] = useState<any[]>([]);
+  const [lastUpdatedIso, setLastUpdatedIso] = useState<string>("");
+  const [loading, setLoading] = useState(true);
 
-  const forecastCsvDownloadUrl = "/api/download/forecast?format=csv";
+  // We hardcode the next update time to the next midnight for the UI
+  const nextUpdateIso = new Date(new Date().setHours(24, 0, 0, 0)).toISOString();
+  const forecastCsvDownloadUrl = `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/download/history?from=2025-01-01&to=2025-12-31&format=csv`;
+
+  useEffect(() => {
+    async function loadForecast() {
+      try {
+        const rawData = await getLatestForecast("balaya", "peliyagoda");
+
+        // Transform backend response (arrays) into the row objects the components expect
+        if (rawData && rawData.dates) {
+          const transformedRows = rawData.dates.map((dateStr: string, index: number) => ({
+            day: index + 1,
+            dateLabel: new Date(dateStr).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+            prediction: Math.round(rawData.blended[index]),
+            confidence: rawData.confidence[index] ? Math.round(rawData.confidence[index]) : 30, // Default 30 if null
+            lower: rawData.confidenceLower[index] ? Math.round(rawData.confidenceLower[index]) : null,
+            upper: rawData.confidenceUpper[index] ? Math.round(rawData.confidenceUpper[index]) : null,
+          }));
+          setForecastData(transformedRows);
+          setLastUpdatedIso(rawData.forecastDate || new Date().toISOString());
+        }
+      } catch (error) {
+        console.error("Failed to load forecast", error);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadForecast();
+  }, []);
+
+  if (loading) {
+    return <div className="flex h-64 items-center justify-center text-brand-neutral">Loading real-time forecast data...</div>;
+  }
 
   return (
     <div className="space-y-6">
@@ -81,16 +118,22 @@ export default function HomePage() {
 
       <FishSelector />
 
-      <ForecastSummaryCards rows={detailedForecast7Days} wowPercent={-2.1} />
+      {forecastData.length > 0 ? (
+        <>
+          <ForecastSummaryCards rows={forecastData} wowPercent={-2.1} />
 
-      <section className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-black/5">
-        <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <h2 className="font-[var(--font-poppins)] text-lg">Forecast details</h2>
-          <UpdateBadge lastUpdatedIso={lastUpdatedIso} nextUpdateIso={nextUpdateIso} />
-        </div>
+          <section className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-black/5">
+            <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <h2 className="font-[var(--font-poppins)] text-lg">Forecast details</h2>
+              <UpdateBadge lastUpdatedIso={lastUpdatedIso} nextUpdateIso={nextUpdateIso} />
+            </div>
 
-        <ForecastTable rows={detailedForecast7Days} />
-      </section>
+            <ForecastTable rows={forecastData} />
+          </section>
+        </>
+      ) : (
+        <div className="p-4 text-center text-slate-500">No forecast data available currently.</div>
+      )}
 
       <section className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-black/5">
         <div className="mt-4 rounded-xl bg-brand-background p-6 text-sm text-brand-neutral">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 
 import FishSelector from "@/components/FishSelector";
@@ -10,10 +10,12 @@ import DownloadActions from "@/components/DownloadActions";
 import MetricCard from "@/components/MetricCard";
 
 import { toCsv } from "@/lib/toCsv";
-import { historyData, type HistoryPoint } from "@/lib/dummyHistory";
+import { getHistory, getDownloadUrl } from "@/lib/api";
 
-function inRange(iso: string, from: string, to: string) {
-  return iso >= from && iso <= to;
+export interface HistoryPoint {
+  dateIso: string;
+  dateLabel: string;
+  price: number;
 }
 
 function defaultRange(): DateRange {
@@ -56,13 +58,38 @@ function computeStats(rows: HistoryPoint[]) {
 
 export default function HistoryPageClient() {
   const [range, setRange] = useState<DateRange>(() => defaultRange());
+  const [rows, setRows] = useState<HistoryPoint[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const rows = useMemo(
-    () => historyData.filter((p) => inRange(p.dateIso, range.from, range.to)),
-    [range]
-  );
+  // Re-fetch from backend whenever the date range changes
+  useEffect(() => {
+    async function fetchHistoricalData() {
+      setLoading(true);
+      try {
+        const rawData = await getHistory(range.from, range.to, "balaya", "peliyagoda");
 
-  const stats = useMemo(() => computeStats(rows), [rows]);
+        if (rawData && rawData.dates) {
+          const transformed = rawData.dates.map((dateIso: string, i: number) => ({
+            dateIso,
+            dateLabel: new Date(dateIso).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+            price: Math.round(rawData.prices[i]),
+          }));
+          setRows(transformed);
+        } else {
+          setRows([]);
+        }
+      } catch (error) {
+        console.error("Failed to load historical data", error);
+        setRows([]);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchHistoricalData();
+  }, [range]);
+
+  const stats = computeStats(rows);
 
   const clipboardText = toCsv(
     rows.map((r) => ({
@@ -71,11 +98,9 @@ export default function HistoryPageClient() {
     }))
   );
 
-  // TODO BACKEND INTEGRATION:
-  // const csvUrl = `/api/download/history?format=csv&from=${range.from}&to=${range.to}&fish=balaya`
-  // const excelUrl = `/api/download/history?format=excel&from=${range.from}&to=${range.to}&fish=balaya`
-  const csvUrl = undefined;
-  const excelUrl = undefined;
+  // REAL BACKEND INTEGRATION:
+  const csvUrl = getDownloadUrl(range.from, range.to, "csv");
+  const excelUrl = getDownloadUrl(range.from, range.to, "excel");
 
   return (
     <div className="space-y-6">
@@ -110,11 +135,17 @@ export default function HistoryPageClient() {
         <div className="mb-3 flex flex-col gap-1">
           <h2 className="font-[var(--font-poppins)] text-lg">Price trend</h2>
           <p className="text-sm text-brand-neutral">
-            Showing {rows.length} days from {range.from} to {range.to}.
+            {loading ? "Loading data..." : `Showing ${rows.length} days from ${range.from} to ${range.to}.`}
           </p>
         </div>
 
-        <HistoryChart rows={rows} />
+        {!loading && rows.length > 0 ? (
+          <HistoryChart rows={rows} />
+        ) : !loading ? (
+          <div className="flex h-48 items-center justify-center text-slate-400">No data available for this range.</div>
+        ) : (
+          <div className="flex h-48 items-center justify-center text-slate-400">Loading...</div>
+        )}
       </section>
 
       <section className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-black/5">
