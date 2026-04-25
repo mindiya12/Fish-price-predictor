@@ -44,7 +44,7 @@ def main():
                 generated_at = NOW()
         """)
 
-        for h in range(1, 8):
+        for h in range(1, 4):
             conn.execute(insert_q, {
                 "forecast_date": forecast_date,
                 "horizon": h,
@@ -56,7 +56,7 @@ def main():
                 "model_version": "baseline_ma7",
             })
 
-    print("Inserted/updated 7-day baseline forecast.")
+    print("Inserted/updated 3-day baseline forecast.")
 
 if __name__ == "__main__":
     main()

@@ -1,0 +1,4 @@
+forecast_date,target_date,horizon,xgb_prediction,blended_prediction,conf_lower,conf_upper,fish,location,model_version
+2026-04-05,2026-04-06,1,10.55,483.85,459.65,508.04,balaya,peliyagoda,xgboost_v1_blend
+2026-04-05,2026-04-07,2,-7.56,474.79,451.05,498.53,balaya,peliyagoda,xgboost_v1_blend
+2026-04-05,2026-04-08,3,-2.81,477.17,453.31,501.03,balaya,peliyagoda,xgboost_v1_blend

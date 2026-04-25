@@ -51,11 +51,11 @@ export default function MetricCard({
   const isNumber = typeof value === "number" && Number.isFinite(value);
 
   return (
-    <div className="rounded-xl bg-white p-6 shadow-sm ring-1 ring-black/5 transition hover:-translate-y-1 hover:shadow-md">
-      <p className="text-sm text-brand-neutral">{title}</p>
+    <div className="rounded-lg bg-white p-5 shadow-subtle ring-1 ring-black/5 transition hover:shadow-sm-elevated">
+      <p className="text-xs font-semibold uppercase tracking-wide text-brand-neutral">{title}</p>
 
-      <div className="mt-2 flex items-baseline gap-2">
-        <p className="text-3xl font-bold text-slate-900">
+      <div className="mt-3 flex items-baseline gap-2">
+        <p className="text-3xl font-bold text-brand-primary">
           {isNumber ? (
             <>
               {unit ? <span className="mr-2">{unit}</span> : null}
@@ -73,7 +73,7 @@ export default function MetricCard({
       </div>
 
       {subtitle && (
-        <p className="mt-2 inline-flex rounded-full bg-brand-light px-3 py-1 text-xs text-brand-secondary">
+        <p className="mt-3 inline-flex rounded-md bg-brand-light px-2 py-1 text-xs text-brand-secondary">
           {subtitle}
         </p>
       )}

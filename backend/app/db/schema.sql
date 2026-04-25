@@ -9,6 +9,42 @@ CREATE TABLE IF NOT EXISTS price_history (
   UNIQUE(date, location, fish)
 );
 
+CREATE TABLE IF NOT EXISTS weather_data (
+  id           SERIAL PRIMARY KEY,
+  date         DATE NOT NULL,
+  city         TEXT NOT NULL,
+  temp_mean_c  NUMERIC,
+  wind_max_kmh NUMERIC,
+  gust_max_kmh NUMERIC,
+  precip_mm    NUMERIC,
+  created_at   TIMESTAMP DEFAULT NOW(),
+  UNIQUE (date, city)
+);
+CREATE INDEX IF NOT EXISTS idx_weather_date ON weather_data(date);
+
+CREATE TABLE IF NOT EXISTS fuel_prices (
+  id         SERIAL PRIMARY KEY,
+  date       DATE NOT NULL UNIQUE,
+  lp_95      NUMERIC,
+  lp_92      NUMERIC,
+  lad        NUMERIC,
+  lsd        NUMERIC,
+  lk         NUMERIC,
+  source     TEXT DEFAULT 'ceypetco',
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS inflation_data (
+  id              SERIAL PRIMARY KEY,
+  reference_month DATE NOT NULL UNIQUE,
+  ccpi_headline   NUMERIC,
+  ccpi_food       NUMERIC,
+  ccpi_non_food   NUMERIC,
+  source_pdf      TEXT,
+  created_at      TIMESTAMP DEFAULT NOW()
+);
+
+
 CREATE TABLE IF NOT EXISTS forecasts (
   id SERIAL PRIMARY KEY,
   forecast_date DATE NOT NULL,

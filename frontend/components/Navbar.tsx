@@ -32,11 +32,11 @@ export default function Navbar() {
     >
       <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-4">
         <Link href="/" className="flex items-center gap-2">
-          <div className="h-9 w-9 rounded-lg bg-brand-primary text-white grid place-items-center font-semibold">
+          <div className="h-9 w-9 rounded-lg bg-brand-primary text-white grid place-items-center font-bold text-sm">
             FP
           </div>
           <div className="leading-tight">
-            <div className="font-[var(--font-poppins)] text-base">FishPrice.LK</div>
+            <div className="font-semibold text-brand-primary">FishPrice.LK</div>
             <div className="text-xs text-brand-neutral">Peliyagoda market</div>
           </div>
         </Link>
@@ -46,7 +46,7 @@ export default function Navbar() {
             <Link
               key={item.href}
               href={item.href}
-              className="rounded-lg px-3 py-2 text-sm text-slate-700 transition hover:bg-brand-light hover:text-brand-secondary"
+              className="rounded-lg px-3 py-2 text-sm font-medium text-brand-neutral transition hover:bg-brand-light hover:text-brand-primary"
             >
               {item.label}
             </Link>

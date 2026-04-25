@@ -44,7 +44,7 @@ export default function ForecastSummaryCards({ rows, wowPercent }: Props) {
         }${wowPercent.toFixed(1)}%`;
 
   return (
-    <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 mb-2">
       <MetricCard
         title="Today’s forecast"
         value={today.prediction}

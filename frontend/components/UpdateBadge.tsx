@@ -57,11 +57,11 @@ export default function UpdateBadge({
     nowMs > 0 ? formatCountdown(nextUpdate.getTime() - nowMs) : "--:--:--";
 
   return (
-    <div className="rounded-lg bg-brand-light px-3 py-2 text-xs text-slate-700 ring-1 ring-black/5">
-      <div className="flex flex-wrap gap-x-3 gap-y-1">
-        <span>Last updated: {lastUpdatedText}</span>
-        <span>Next update: {nextUpdateText}</span>
-        <span className="font-medium">Refresh in: {countdown}</span>
+    <div className="rounded-lg bg-brand-light px-4 py-2 text-xs ring-1 ring-brand-accent/30">
+      <div className="flex flex-wrap gap-x-4 gap-y-1 text-brand-neutral">
+        <span>Updated: {lastUpdatedText}</span>
+        <span>Next: {nextUpdateText}</span>
+        <span className="font-semibold text-brand-primary">Refresh in: {countdown}</span>
       </div>
     </div>
   );

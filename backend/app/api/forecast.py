@@ -11,15 +11,26 @@ def get_latest_forecast(
     location: str = "peliyagoda",
     db: Session = Depends(get_db),
 ):
-    # latest forecast_date for this fish/location
-    latest_date_q = text("""
-        SELECT MAX(forecast_date)
+    # In the current DB schema, `forecast_date` is the exact TARGET day of the prediction.
+    # To get the latest 3-day forecast, we just fetch the most recent 3 distinct dates.
+    # We order by generated_at DESC to ensure we get the latest run, then pull the 3 horizons.
+
+    q = text("""
+        SELECT forecast_date, horizon, blended_prediction, conf_lower, conf_upper
         FROM forecasts
         WHERE fish = :fish AND location = :location
+        ORDER BY generated_at DESC, horizon ASC
+        LIMIT 3
     """)
-    latest_date = db.execute(latest_date_q, {"fish": fish, "location": location}).scalar()
+    rows = db.execute(q, {
+        "fish": fish,
+        "location": location,
+    }).fetchall()
+    
+    # Sort them chronically by target date to ensure ascending order
+    rows = sorted(rows, key=lambda x: x.forecast_date)
 
-    if latest_date is None:
+    if not rows:
         return {
             "forecastDate": None,
             "dates": [],
@@ -29,21 +40,11 @@ def get_latest_forecast(
             "confidenceUpper": [],
         }
 
-    q = text("""
-        SELECT forecast_date, horizon, blended_prediction, conf_lower, conf_upper
-        FROM forecasts
-        WHERE forecast_date = :forecast_date
-          AND fish = :fish
-          AND location = :location
-        ORDER BY horizon ASC
-    """)
-    rows = db.execute(q, {
-        "forecast_date": latest_date,
-        "fish": fish,
-        "location": location,
-    }).fetchall()
+    # latest run date is roughly 'generated_at' of the first row, but frontend just wants an ISO string.
+    # We will just pass today as the "forecast run date".
+    from datetime import date
+    today_iso = date.today().isoformat()
 
-    # frontend likes a per-day list; horizons are 1..7
     dates = []
     blended = []
     conf = []
@@ -51,12 +52,8 @@ def get_latest_forecast(
     upper = []
 
     for r in rows:
-        forecast_date, horizon, pred, lo, hi = r
-        day = forecast_date.toordinal() + int(horizon)
-        # Convert ordinal back to ISO date string
-        # (simple and avoids timezone issues)
-        from datetime import date
-        dates.append(date.fromordinal(day).isoformat())
+        target_date, horizon, pred, lo, hi = r
+        dates.append(target_date.isoformat())
 
         blended.append(float(pred))
         lower.append(float(lo) if lo is not None else None)
@@ -65,10 +62,11 @@ def get_latest_forecast(
         if lo is not None and hi is not None:
             conf.append(float(hi) - float(lo))
         else:
-            conf.append(None)
+            # Default confidence band if not found
+            conf.append(30.0)
 
     return {
-        "forecastDate": latest_date.isoformat(),
+        "forecastDate": today_iso,
         "dates": dates,
         "blended": blended,
         "confidence": conf,

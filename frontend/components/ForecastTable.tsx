@@ -30,11 +30,11 @@ export default function ForecastTable({ rows }: Props) {
         animate={reduceMotion ? false : "show"}
       >
         <thead>
-          <tr className="text-left text-slate-600">
-            <th className="border-b border-slate-200 px-3 py-2">Day</th>
-            <th className="border-b border-slate-200 px-3 py-2">Date</th>
-            <th className="border-b border-slate-200 px-3 py-2">Predicted price</th>
-            <th className="border-b border-slate-200 px-3 py-2">Confidence</th>
+          <tr className="text-left text-brand-neutral bg-brand-light/60">
+            <th className="border-b border-brand-light px-3 py-3 font-semibold text-xs uppercase tracking-wide text-brand-primary">Day</th>
+            <th className="border-b border-brand-light px-3 py-3 font-semibold text-xs uppercase tracking-wide text-brand-primary">Date</th>
+            <th className="border-b border-brand-light px-3 py-3 font-semibold text-xs uppercase tracking-wide text-brand-primary">Predicted price</th>
+            <th className="border-b border-brand-light px-3 py-3 font-semibold text-xs uppercase tracking-wide text-brand-primary">Confidence</th>
           </tr>
         </thead>
 
@@ -45,12 +45,12 @@ export default function ForecastTable({ rows }: Props) {
               variants={rowVariants}
               className="odd:bg-white even:bg-brand-light/40 hover:bg-brand-light transition"
             >
-              <td className="border-b border-slate-100 px-3 py-2">{row.day}</td>
-              <td className="border-b border-slate-100 px-3 py-2">{row.dateLabel}</td>
-              <td className="border-b border-slate-100 px-3 py-2 font-medium text-slate-900">
+              <td className="border-b border-slate-100 px-3 py-3">{row.day}</td>
+              <td className="border-b border-slate-100 px-3 py-3">{row.dateLabel}</td>
+              <td className="border-b border-slate-100 px-3 py-3 font-semibold text-brand-primary">
                 Rs. {row.prediction}
               </td>
-              <td className="border-b border-slate-100 px-3 py-2 text-slate-700">
+              <td className="border-b border-slate-100 px-3 py-3 text-brand-neutral">
                 ± {row.confidence} Rs
               </td>
             </motion.tr>

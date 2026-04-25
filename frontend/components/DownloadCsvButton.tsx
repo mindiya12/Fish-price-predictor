@@ -15,7 +15,7 @@ export default function DownloadCsvButton({
       onClick={() => {
         window.location.href = downloadUrl;
       }}
-      className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm text-slate-700 shadow-sm transition hover:bg-slate-50"
+      className="rounded-lg border border-brand-neutral/20 bg-white px-4 py-2 text-sm text-brand-neutral shadow-subtle transition hover:bg-brand-light hover:border-brand-accent/50"
     >
       {label}
     </button>

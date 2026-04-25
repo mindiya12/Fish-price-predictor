@@ -54,7 +54,7 @@ export default function HomePage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* Full-width hero banner */}
       <section className="relative left-1/2 right-1/2 -ml-[50vw] -mr-[50vw] w-screen overflow-hidden">
         <div className="relative h-[260px] sm:h-[320px] md:h-[440px]">
@@ -122,9 +122,9 @@ export default function HomePage() {
         <>
           <ForecastSummaryCards rows={forecastData} wowPercent={-2.1} />
 
-          <section className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-black/5">
-            <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <h2 className="font-[var(--font-poppins)] text-lg">Forecast details</h2>
+          <section className="rounded-lg bg-white p-5 shadow-subtle ring-1 ring-black/5">
+            <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <h2 className="font-semibold text-brand-primary">Forecast details</h2>
               <UpdateBadge lastUpdatedIso={lastUpdatedIso} nextUpdateIso={nextUpdateIso} />
             </div>
 
@@ -135,8 +135,8 @@ export default function HomePage() {
         <div className="p-4 text-center text-slate-500">No forecast data available currently.</div>
       )}
 
-      <section className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-black/5">
-        <div className="mt-4 rounded-xl bg-brand-background p-6 text-sm text-brand-neutral">
+      <section className="rounded-lg bg-white p-5 shadow-subtle ring-1 ring-black/5">
+        <div className="rounded-lg bg-brand-light p-6">
           <HistoricalChartSection fishName="Balaya" location="Peliyagoda" />
         </div>
       </section>
@@ -152,10 +152,10 @@ export default function HomePage() {
         <DownloadCsvButton downloadUrl={forecastCsvDownloadUrl} />
       </section>
 
-      <section id="about" className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-black/5">
-        <h2 className="font-[var(--font-poppins)] text-lg">About</h2>
-        <p className="mt-2 text-sm text-brand-neutral">
-          FishPrice.LK predicts Balaya prices using AI. Currently serving Peliyagoda market.
+      <section id="about" className="rounded-lg bg-white p-5 shadow-subtle ring-1 ring-black/5">
+        <h2 className="font-semibold text-brand-primary">About</h2>
+        <p className="mt-3 text-sm leading-relaxed text-brand-neutral">
+          FishPrice.LK predicts Balaya prices using AI models trained on historical Peliyagoda market data. Get accurate 3-day forecasts to plan your purchases better.
         </p>
       </section>
 
