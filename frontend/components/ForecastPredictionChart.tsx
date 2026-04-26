@@ -96,7 +96,7 @@ export default function ForecastPredictionChart({ rows }: Props) {
         padding: 12,
         callbacks: {
           label: (ctx) => {
-            if (ctx.dataset.label === "Predicted Price") return `  Rs. ${ctx.parsed.y.toLocaleString()}`;
+            if (ctx.dataset.label === "Predicted Price" && ctx.parsed.y != null) return `  Rs. ${ctx.parsed.y.toLocaleString()}`;
             return "";
           },
           labelColor: (ctx) => ({
