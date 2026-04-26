@@ -133,7 +133,7 @@ export default function HomePage() {
               boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4), 0 0 24px rgba(0, 212, 255, 0.1)',
               minWidth: '200px',
             }}>
-              <p style={{ fontSize: '0.65rem', fontWeight: 700, color: '#4A6285', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Tomorrow's Forecast</p>
+              <p style={{ fontSize: '0.65rem', fontWeight: 700, color: '#4A6285', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Tomorrow&apos;s Forecast</p>
               <p style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 800, fontSize: '2rem', color: '#00D4FF', lineHeight: 1, marginBottom: '0.5rem' }}>
                 Rs. {today.prediction.toLocaleString()}
               </p>
