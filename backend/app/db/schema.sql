@@ -88,12 +88,18 @@ CREATE TABLE IF NOT EXISTS model_metrics (
   rmse NUMERIC,
   mae NUMERIC,
   mape NUMERIC,
+  r2_score NUMERIC,
+  xgb_weight NUMERIC DEFAULT 0.7,
   fish TEXT NOT NULL DEFAULT 'balaya',
   location TEXT NOT NULL DEFAULT 'peliyagoda',
   is_production BOOLEAN NOT NULL DEFAULT FALSE,
   trained_at TIMESTAMP NOT NULL DEFAULT NOW(),
   UNIQUE(model_version, horizon, fish, location)
 );
+
+-- Safe upgrades for existing deployments
+ALTER TABLE model_metrics ADD COLUMN IF NOT EXISTS r2_score NUMERIC;
+ALTER TABLE model_metrics ADD COLUMN IF NOT EXISTS xgb_weight NUMERIC DEFAULT 0.7;
 
 -- Stores per-feature importance values from each training run
 CREATE TABLE IF NOT EXISTS feature_importance (
@@ -128,3 +134,14 @@ VALUES
   ('hurulla',   'හුරුල්ල',  FALSE, 'peliyagoda', 'Q3 2026'),
   ('paraw',     'පාරාව',   FALSE, 'peliyagoda', 'Q3 2026')
 ON CONFLICT (name) DO NOTHING;
+
+-- User-defined price threshold alerts
+CREATE TABLE IF NOT EXISTS price_alerts (
+  id SERIAL PRIMARY KEY,
+  email TEXT NOT NULL,
+  target_price NUMERIC NOT NULL,
+  fish TEXT NOT NULL DEFAULT 'balaya',
+  location TEXT NOT NULL DEFAULT 'peliyagoda',
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);

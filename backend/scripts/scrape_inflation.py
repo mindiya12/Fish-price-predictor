@@ -20,19 +20,52 @@ from datetime import datetime, date
 from dateutil.relativedelta import relativedelta
 from sqlalchemy import create_engine, text
 import io
+import time
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
 CBSL_PAGE_URL = "https://www.cbsl.gov.lk/en/measures-of-consumer-price-inflation"
+
+# Better headers that won't trigger blocking
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
     "Accept-Language": "en-US,en;q=0.9",
+    "Accept-Encoding": "gzip, deflate, br",
+    "DNT": "1",
+    "Connection": "keep-alive",
+    "Upgrade-Insecure-Requests": "1",
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "none",
+    "Cache-Control": "max-age=0",
 }
 
 # PDF URL template – constructed from press release naming convention:
 # press_{YYYYMMDD}_inflation_in_{month_name}_{YYYY}_ccpi_e.pdf
 # We scrape the page for links matching this pattern.
 PDF_LINK_PATTERN = re.compile(r"press_\d{8}_inflation.*?ccpi.*?\.pdf", re.IGNORECASE)
+
+
+def _create_session_with_retries(max_retries: int = 5, backoff_factor: float = 1.0):
+    """Create a requests session with built-in retry logic."""
+    session = requests.Session()
+
+    # Retry strategy for urllib3
+    retry_strategy = Retry(
+        total=max_retries,
+        status_forcelist=[429, 500, 502, 503, 504],
+        allowed_methods=["GET"],
+        backoff_factor=backoff_factor,
+    )
+
+    adapter = HTTPAdapter(max_retries=retry_strategy)
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
+
+    return session
 
 
 def _create_table(conn):
@@ -49,21 +82,67 @@ def _create_table(conn):
     """))
 
 
-def _get_pdf_links() -> list[str]:
-    """Scrape the CBSL page and return list of CCPI inflation PDF URLs."""
-    resp = requests.get(CBSL_PAGE_URL, headers=HEADERS, timeout=30)
-    resp.raise_for_status()
-    soup = BeautifulSoup(resp.text, "html.parser")
-    
-    links = []
-    for a in soup.find_all("a", href=True):
-        href = a["href"]
-        if PDF_LINK_PATTERN.search(href):
-            if not href.startswith("http"):
-                href = "https://www.cbsl.gov.lk" + href
-            links.append(href)
-    
-    return links
+def _get_pdf_links(max_manual_retries: int = 5) -> list[str]:
+    """Scrape the CBSL page and return list of CCPI inflation PDF URLs with robust retry logic."""
+    session = _create_session_with_retries(max_retries=5, backoff_factor=2.0)
+
+    for attempt in range(max_manual_retries):
+        try:
+            print(f"[Inflation] Fetching CBSL page (attempt {attempt + 1}/{max_manual_retries})...")
+
+            # Use longer timeout for GitHub Actions
+            resp = session.get(CBSL_PAGE_URL, headers=HEADERS, timeout=(15, 60))
+            resp.raise_for_status()
+
+            print(f"[Inflation] Status code: {resp.status_code}, Content length: {len(resp.text)}")
+
+            soup = BeautifulSoup(resp.text, "html.parser")
+
+            links = []
+            for a in soup.find_all("a", href=True):
+                href = a["href"]
+                if PDF_LINK_PATTERN.search(href):
+                    if not href.startswith("http"):
+                        href = "https://www.cbsl.gov.lk" + href
+                    links.append(href)
+
+            if links:
+                print(f"[Inflation] Found {len(links)} inflation PDFs")
+                return links
+            else:
+                print(f"[Inflation] Warning: No PDF links found on page. Page structure may have changed.")
+                return []
+
+        except requests.ConnectionError as e:
+            if attempt < max_manual_retries - 1:
+                wait_time = (2 ** attempt) * 3  # 3s, 6s, 12s, 24s, 48s
+                print(f"[Inflation] Connection error (attempt {attempt + 1}): {e}")
+                print(f"[Inflation] Retrying in {wait_time}s...")
+                time.sleep(wait_time)
+            else:
+                print(f"[Inflation] Failed after {max_manual_retries} attempts: {e}")
+                return []
+
+        except requests.Timeout as e:
+            if attempt < max_manual_retries - 1:
+                wait_time = (2 ** attempt) * 3
+                print(f"[Inflation] Timeout (attempt {attempt + 1}): {e}")
+                print(f"[Inflation] Retrying in {wait_time}s...")
+                time.sleep(wait_time)
+            else:
+                print(f"[Inflation] Timeout after {max_manual_retries} attempts: {e}")
+                return []
+
+        except Exception as e:
+            print(f"[Inflation] Unexpected error: {type(e).__name__}: {e}")
+            if attempt < max_manual_retries - 1:
+                wait_time = (2 ** attempt) * 3
+                print(f"[Inflation] Retrying in {wait_time}s...")
+                time.sleep(wait_time)
+            else:
+                return []
+
+    return []
 
 
 def _extract_month_from_url(pdf_url: str) -> date | None:
@@ -130,59 +209,90 @@ def scrape_and_store_inflation(engine, max_records: int = 120):
     Scrape CBSL inflation PDFs and store in DB.
     max_records limits backfill to N months (default 10 years = 120 months).
     """
-    print("Fetching CBSL inflation PDF links...")
-    pdf_links = _get_pdf_links()
-    
-    if not pdf_links:
-        print("No PDF links found. Page may require JavaScript rendering.")
-        return 0
-    
-    print(f"Found {len(pdf_links)} inflation PDFs.")
-    
-    with engine.begin() as conn:
-        _create_table(conn)
-    
-    inserted = 0
-    for url in pdf_links[:max_records]:
-        ref_month = _extract_month_from_url(url)
-        if not ref_month:
-            print(f"Could not parse month from: {url}")
-            continue
-        
-        print(f"Processing: {ref_month.strftime('%B %Y')} — {url}")
-        
-        try:
-            r = requests.get(url, headers=HEADERS, timeout=30)
-            if r.status_code != 200:
-                print(f"  Failed to download PDF (status {r.status_code}), skipping.")
+    try:
+        print("Fetching CBSL inflation PDF links...")
+        pdf_links = _get_pdf_links()
+
+        if not pdf_links:
+            print("[Inflation] No PDF links found. Checking last stored inflation value...")
+            # Check if we have recent data
+            with engine.connect() as conn:
+                row = conn.execute(text("""
+                    SELECT MAX(reference_month) FROM inflation_data
+                """)).fetchone()
+            if row and row[0]:
+                print(f"[Inflation] Last inflation record: {row[0]}")
+            else:
+                print("[Inflation] No inflation records in database.")
+            return 0
+
+        print(f"[Inflation] Found {len(pdf_links)} inflation PDFs")
+
+        with engine.begin() as conn:
+            _create_table(conn)
+
+        inserted = 0
+        session = _create_session_with_retries(max_retries=3, backoff_factor=2.0)
+
+        for idx, url in enumerate(pdf_links[:max_records], 1):
+            try:
+                ref_month = _extract_month_from_url(url)
+                if not ref_month:
+                    print(f"[Inflation] [{idx}] Could not parse month from: {url}")
+                    continue
+
+                print(f"[Inflation] [{idx}] Processing: {ref_month.strftime('%B %Y')} — {url}")
+
+                try:
+                    r = session.get(url, headers=HEADERS, timeout=(15, 60))
+                    if r.status_code != 200:
+                        print(f"[Inflation] [{idx}]   ✗ Failed to download PDF (status {r.status_code})")
+                        continue
+
+                    metrics = _parse_ccpi_from_pdf(r.content)
+
+                    if metrics["ccpi_headline"] is None:
+                        print(f"[Inflation] [{idx}]   ✗ Could not extract headline inflation from PDF")
+                        continue
+
+                    with engine.begin() as conn:
+                        conn.execute(text("""
+                            INSERT INTO inflation_data (reference_month, ccpi_headline, ccpi_food, ccpi_non_food, source_pdf)
+                            VALUES (:month, :headline, :food, :non_food, :pdf_url)
+                            ON CONFLICT (reference_month) DO UPDATE
+                                SET ccpi_headline = EXCLUDED.ccpi_headline,
+                                    ccpi_food     = EXCLUDED.ccpi_food,
+                                    ccpi_non_food = EXCLUDED.ccpi_non_food,
+                                    source_pdf    = EXCLUDED.source_pdf
+                        """), {
+                            "month":    ref_month,
+                            "headline": metrics["ccpi_headline"],
+                            "food":     metrics["ccpi_food"],
+                            "non_food": metrics["ccpi_non_food"],
+                            "pdf_url":  url,
+                        })
+
+                    print(f"[Inflation] [{idx}]   ✓ Saved: Headline={metrics['ccpi_headline']}%")
+                    inserted += 1
+
+                except requests.RequestException as e:
+                    print(f"[Inflation] [{idx}]   ✗ Network error: {e}")
+                    continue
+                except Exception as e:
+                    print(f"[Inflation] [{idx}]   ✗ Error: {e}")
+                    continue
+
+            except Exception as e:
+                print(f"[Inflation] [{idx}] Unexpected error: {e}")
                 continue
-            
-            metrics = _parse_ccpi_from_pdf(r.content)
-            
-            with engine.begin() as conn:
-                conn.execute(text("""
-                    INSERT INTO inflation_data (reference_month, ccpi_headline, ccpi_food, ccpi_non_food, source_pdf)
-                    VALUES (:month, :headline, :food, :non_food, :pdf_url)
-                    ON CONFLICT (reference_month) DO UPDATE
-                        SET ccpi_headline = EXCLUDED.ccpi_headline,
-                            ccpi_food     = EXCLUDED.ccpi_food,
-                            ccpi_non_food = EXCLUDED.ccpi_non_food,
-                            source_pdf    = EXCLUDED.source_pdf
-                """), {
-                    "month":    ref_month,
-                    "headline": metrics["ccpi_headline"],
-                    "food":     metrics["ccpi_food"],
-                    "non_food": metrics["ccpi_non_food"],
-                    "pdf_url":  url,
-                })
-            
-            print(f"  Saved: Headline={metrics['ccpi_headline']}%")
-            inserted += 1
-        
-        except Exception as e:
-            print(f"  Error processing {url}: {e}")
-    
-    return inserted
+
+        session.close()
+        print(f"[Inflation] ✓ Completed: Stored {inserted} inflation records")
+        return inserted
+
+    except Exception as e:
+        print(f"[Inflation] ✗ Fatal error: {e}")
+        raise  # Re-raise so pipeline sees the error
 
 
 def get_latest_inflation(engine) -> float | None:
@@ -199,10 +309,10 @@ def get_latest_inflation(engine) -> float | None:
 def main():
     if not DATABASE_URL:
         raise RuntimeError("DATABASE_URL is not set")
-    
+
     engine = create_engine(DATABASE_URL)
     count = scrape_and_store_inflation(engine)
-    print(f"Stored {count} monthly inflation records.")
+    print(f"\n✓ Inflation scraper completed: {count} records stored")
 
 
 if __name__ == "__main__":

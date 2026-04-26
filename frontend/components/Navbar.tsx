@@ -2,21 +2,24 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { Menu, X } from 'lucide-react';
+import { usePathname } from 'next/navigation';
+import { Menu, X, TrendingUp, Activity } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const navItems = [
+  { href: '/', label: 'Home' },
   { href: '/forecast', label: 'Forecast' },
   { href: '/history', label: 'Historical Data' },
-  { href: '/about', label: 'About' }
+  { href: '/about', label: 'About' },
 ];
 
 export default function Navbar() {
-  const [isShrunk, setIsShrunk] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const pathname = usePathname();
 
   useEffect(() => {
-    const onScroll = () => setIsShrunk(window.scrollY > 10);
+    const onScroll = () => setScrolled(window.scrollY > 20);
     onScroll();
     window.addEventListener('scroll', onScroll);
     return () => window.removeEventListener('scroll', onScroll);
@@ -24,65 +27,115 @@ export default function Navbar() {
 
   return (
     <header
-      className={[
-        'sticky top-0 z-50 w-full border-b border-black/5 backdrop-blur',
-        'bg-brand-background/80',
-        isShrunk ? 'py-2' : 'py-3'
-      ].join(' ')}
+      style={{
+        position: 'sticky',
+        top: 0,
+        zIndex: 100,
+        transition: 'all 0.3s ease',
+        background: scrolled
+          ? 'rgba(7, 11, 20, 0.85)'
+          : 'transparent',
+        backdropFilter: scrolled ? 'blur(20px)' : 'none',
+        borderBottom: scrolled ? '1px solid rgba(100, 180, 255, 0.08)' : '1px solid transparent',
+      }}
     >
-      <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-4">
-        <Link href="/" className="flex items-center gap-2">
-          <div className="h-9 w-9 rounded-lg bg-brand-primary text-white grid place-items-center font-bold text-sm">
-            FP
-          </div>
-          <div className="leading-tight">
-            <div className="font-semibold text-brand-primary">FishPrice.LK</div>
-            <div className="text-xs text-brand-neutral">Peliyagoda market</div>
-          </div>
-        </Link>
-
-        <nav className="hidden items-center gap-2 md:flex">
-          {navItems.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className="rounded-lg px-3 py-2 text-sm font-medium text-brand-neutral transition hover:bg-brand-light hover:text-brand-primary"
-            >
-              {item.label}
-            </Link>
-          ))}
-          <Link
-            href="/forecast"
-            className="ml-2 rounded-lg bg-brand-primary px-4 py-2 text-sm text-white shadow-sm transition hover:bg-brand-secondary"
-          >
-            View details
+      <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '0 1.5rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: scrolled ? '60px' : '70px', transition: 'height 0.3s ease' }}>
+          
+          {/* Logo */}
+          <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', textDecoration: 'none' }}>
+            <div style={{
+              width: '38px', height: '38px',
+              borderRadius: '10px',
+              background: 'linear-gradient(135deg, #00B4A0, #00D4FF)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              boxShadow: '0 0 16px rgba(0, 212, 255, 0.35)',
+            }}>
+              <Activity size={18} color="#070B14" strokeWidth={2.5} />
+            </div>
+            <div>
+              <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 800, fontSize: '1rem', color: '#EDF4FF', letterSpacing: '-0.02em' }}>
+                FishPrice<span style={{ color: '#00D4FF' }}>.LK</span>
+              </div>
+              <div style={{ fontSize: '0.65rem', color: '#4A6285', fontWeight: 500, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                Peliyagoda Market
+              </div>
+            </div>
           </Link>
-        </nav>
 
-        <button
-          className="md:hidden rounded-lg p-2 hover:bg-brand-light"
-          aria-label="Open menu"
-          onClick={() => setMobileOpen((v) => !v)}
-        >
-          {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-        </button>
+          {/* Desktop Nav */}
+          <nav style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }} className="hidden-mobile">
+            {navItems.map((item) => {
+              const isActive = pathname === item.href;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`nav-link ${isActive ? 'active' : ''}`}
+                >
+                  {item.label}
+                </Link>
+              );
+            })}
+            <Link
+              href="/forecast"
+              className="btn-primary"
+              style={{ marginLeft: '0.5rem', textDecoration: 'none', fontSize: '0.875rem' }}
+            >
+              View Forecast →
+            </Link>
+          </nav>
+
+          {/* Mobile toggle */}
+          <button
+            onClick={() => setMobileOpen(v => !v)}
+            style={{
+              display: 'none',
+              background: 'rgba(0, 212, 255, 0.07)',
+              border: '1px solid rgba(0, 212, 255, 0.15)',
+              borderRadius: '0.5rem',
+              padding: '0.5rem',
+              color: '#7A9CC9',
+              cursor: 'pointer',
+            }}
+            className="show-mobile"
+            aria-label="Toggle menu"
+          >
+            {mobileOpen ? <X size={20} /> : <Menu size={20} />}
+          </button>
+        </div>
       </div>
 
+      {/* Mobile Menu */}
       <AnimatePresence>
         {mobileOpen && (
           <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            className="md:hidden overflow-hidden border-t border-black/5 bg-white"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            style={{
+              overflow: 'hidden',
+              borderTop: '1px solid rgba(100, 180, 255, 0.08)',
+              background: 'rgba(7, 11, 20, 0.95)',
+              backdropFilter: 'blur(20px)',
+            }}
           >
-            <div className="mx-auto w-full max-w-6xl px-4 py-3 flex flex-col gap-2">
+            <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '1rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
               {navItems.map((item) => (
                 <Link
                   key={item.href}
                   href={item.href}
                   onClick={() => setMobileOpen(false)}
-                  className="rounded-lg px-3 py-2 text-sm text-slate-700 hover:bg-brand-light"
+                  style={{
+                    padding: '0.75rem 1rem',
+                    borderRadius: '0.5rem',
+                    color: '#7A9CC9',
+                    textDecoration: 'none',
+                    fontSize: '0.9rem',
+                    fontWeight: 500,
+                    background: 'rgba(255,255,255,0.03)',
+                    border: '1px solid rgba(100,180,255,0.06)',
+                  }}
                 >
                   {item.label}
                 </Link>
@@ -90,14 +143,22 @@ export default function Navbar() {
               <Link
                 href="/forecast"
                 onClick={() => setMobileOpen(false)}
-                className="rounded-lg bg-brand-primary px-3 py-2 text-sm text-white"
+                className="btn-primary"
+                style={{ textDecoration: 'none', textAlign: 'center', marginTop: '0.25rem' }}
               >
-                View detailed forecast
+                View Forecast →
               </Link>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
+
+      <style>{`
+        @media (max-width: 768px) {
+          .hidden-mobile { display: none !important; }
+          .show-mobile { display: flex !important; }
+        }
+      `}</style>
     </header>
   );
 }

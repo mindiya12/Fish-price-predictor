@@ -1,9 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ChevronDown } from "lucide-react";
-import { AnimatePresence, motion } from "framer-motion";
-
+import { TrendingUp, TrendingDown, BarChart2 } from "lucide-react";
 import HistoryChart from "@/components/HistoryChart";
 import { getHistory } from "@/lib/api";
 
@@ -20,30 +18,24 @@ export default function HistoricalChartSection({
   fishName?: string;
   location?: string;
 }) {
-  const [open, setOpen] = useState(false);
   const [rows, setRows] = useState<HistoryPoint[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function loadData() {
       try {
-        // Fetch the last 30 days dynamically
         const toDate = new Date();
         const fromDate = new Date();
         fromDate.setDate(toDate.getDate() - 30);
-
         const toStr = toDate.toISOString().slice(0, 10);
         const fromStr = fromDate.toISOString().slice(0, 10);
-
         const rawData = await getHistory(fromStr, toStr, fishName.toLowerCase(), location.toLowerCase());
-
-        if (rawData && rawData.dates) {
-          const transformed = rawData.dates.map((dateIso: string, i: number) => ({
+        if (rawData?.dates) {
+          setRows(rawData.dates.map((dateIso: string, i: number) => ({
             dateIso,
             dateLabel: new Date(dateIso).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
             price: Math.round(rawData.prices[i]),
-          }));
-          setRows(transformed);
+          })));
         }
       } catch (error) {
         console.error("Failed to load historical chart", error);
@@ -55,43 +47,67 @@ export default function HistoricalChartSection({
   }, [fishName, location]);
 
   const avg = rows.length > 0 ? Math.round(rows.reduce((s, p) => s + p.price, 0) / rows.length) : 0;
-  const min = rows.length > 0 ? Math.min(...rows.map((p) => p.price)) : 0;
-  const max = rows.length > 0 ? Math.max(...rows.map((p) => p.price)) : 0;
+  const min = rows.length > 0 ? Math.min(...rows.map(p => p.price)) : 0;
+  const max = rows.length > 0 ? Math.max(...rows.map(p => p.price)) : 0;
+  const lastPrice = rows.length > 0 ? rows[rows.length - 1].price : 0;
+  const prevPrice = rows.length > 1 ? rows[rows.length - 2].price : lastPrice;
+  const trend = lastPrice > prevPrice ? 'up' : lastPrice < prevPrice ? 'down' : 'neutral';
 
   return (
-    <section className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-black/5">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center justify-between gap-3"
-      >
-        <div className="text-left">
-          <h2 className="font-[var(--font-poppins)] text-lg">
-            {fishName} history — {location}
-          </h2>
-          <p className="text-sm text-brand-neutral">
-            {loading ? "Loading data..." : rows.length === 0 ? "No data found." : `Average Rs. ${avg} • Range Rs. ${min}–${max}`}
+    <div>
+      {/* Header row */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', marginBottom: '0.375rem' }}>
+            <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(0, 212, 255, 0.1)', border: '1px solid rgba(0, 212, 255, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <BarChart2 size={16} color="#00D4FF" />
+            </div>
+            <h2 style={{ fontSize: '1.125rem', fontWeight: 700, margin: 0 }}>30-Day Price History</h2>
+          </div>
+          <p style={{ fontSize: '0.8rem', color: '#4A6285', margin: 0 }}>
+            {fishName} · {location} market
           </p>
         </div>
 
-        <ChevronDown className={`h-5 w-5 transition ${open ? "rotate-180" : ""}`} />
-      </button>
+        {/* Stats pills */}
+        {!loading && rows.length > 0 && (
+          <div style={{ display: 'flex', gap: '0.625rem', flexWrap: 'wrap' }}>
+            {[
+              { label: 'Avg', value: `Rs. ${avg}` },
+              { label: 'Min', value: `Rs. ${min}` },
+              { label: 'Max', value: `Rs. ${max}` },
+            ].map(stat => (
+              <div key={stat.label} style={{
+                padding: '0.375rem 0.875rem',
+                borderRadius: '999px',
+                background: 'rgba(100, 180, 255, 0.05)',
+                border: '1px solid rgba(100, 180, 255, 0.1)',
+                fontSize: '0.75rem',
+              }}>
+                <span style={{ color: '#4A6285', marginRight: '0.375rem' }}>{stat.label}</span>
+                <span style={{ fontWeight: 700, color: '#EDF4FF' }}>{stat.value}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
-      <AnimatePresence initial={false}>
-        {open && !loading && rows.length > 0 ? (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto" }}
-            exit={{ opacity: 0, height: 0 }}
-            className="mt-4 overflow-hidden"
-          >
-            <div className="text-xs text-brand-neutral mb-2">
-              Tip: Hover or tap the line to see the exact price for a day.
-            </div>
-            <HistoryChart rows={rows} />
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
-    </section>
+      {loading ? (
+        <div style={{ height: '300px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem', color: '#4A6285' }}>
+            <div style={{ width: '36px', height: '36px', borderRadius: '50%', border: '3px solid rgba(0, 212, 255, 0.2)', borderTopColor: '#00D4FF', animation: 'spin 0.8s linear infinite' }} />
+            <p style={{ fontSize: '0.875rem' }}>Loading price data...</p>
+          </div>
+        </div>
+      ) : rows.length === 0 ? (
+        <div style={{ height: '200px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#4A6285' }}>
+          No historical data available.
+        </div>
+      ) : (
+        <HistoryChart rows={rows} />
+      )}
+
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    </div>
   );
 }

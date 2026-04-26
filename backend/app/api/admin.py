@@ -181,6 +181,13 @@ def run_daily_scrape(target_date: str | None = None):
         # 7. Trigger Inference
         run_inference()
 
+        # 8. Check Alerts
+        try:
+            from app.services.alerts import check_and_trigger_alerts
+            check_and_trigger_alerts()
+        except Exception as alert_err:
+            print(f"Alert check failed: {alert_err}")
+
         return {
             "status": "success",
             "message": "Data scraped and inference completed.",
@@ -199,5 +206,104 @@ def scrape_daily(target_date: str | None = None, background_tasks: BackgroundTas
     try:
         result = run_daily_scrape(target_date)
         return ScrapeResponse(**result)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/api/admin/metrics")
+def get_metrics():
+    """Fetch latest model metrics (RMSE, MAE, MAPE, R2) for active models."""
+    try:
+        with engine.connect() as conn:
+            rows = conn.execute(text("""
+                SELECT horizon, rmse, mae, mape, r2_score, trained_at 
+                FROM model_metrics 
+                WHERE is_production = TRUE AND fish = 'balaya' AND location = 'peliyagoda'
+                ORDER BY horizon
+            """)).fetchall()
+            
+        metrics = []
+        for r in rows:
+            metrics.append({
+                "horizon": r[0],
+                "rmse": float(r[1]) if r[1] is not None else 0,
+                "mae": float(r[2]) if r[2] is not None else 0,
+                "mape": float(r[3]) if r[3] is not None else 0,
+                "r2_score": float(r[4]) if r[4] is not None else 0,
+                "trained_at": str(r[5])
+            })
+        return {"status": "success", "data": metrics}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/api/admin/performance")
+def get_performance(days: int = 30):
+    """Fetch actual vs predicted prices for the last N days."""
+    try:
+        with engine.connect() as conn:
+            rows = conn.execute(text("""
+                SELECT p.forecast_date, p.horizon, p.predicted_price, p.actual_price 
+                FROM predictions p
+                WHERE p.fish = 'balaya' AND p.location = 'peliyagoda'
+                  AND p.forecast_date >= CURRENT_DATE - INTERVAL '1 day' * :days
+                ORDER BY p.forecast_date ASC
+            """), {"days": days}).fetchall()
+            
+        perf_data = []
+        for r in rows:
+            perf_data.append({
+                "date": str(r[0]),
+                "horizon": r[1],
+                "predicted": float(r[2]) if r[2] is not None else None,
+                "actual": float(r[3]) if r[3] is not None else None
+            })
+        return {"status": "success", "data": perf_data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+class PageView(BaseModel):
+    path: str
+    user_agent: str | None = None
+
+@router.post("/api/admin/track-view")
+def track_view(view: PageView):
+    """Record a page view for analytics."""
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("""
+                INSERT INTO page_views (path, user_agent)
+                VALUES (:path, :user_agent)
+            """), {"path": view.path, "user_agent": view.user_agent})
+        return {"status": "success"}
+    except Exception as e:
+        # Don't fail the frontend if tracking fails
+        print(f"Failed to track view: {e}")
+        return {"status": "error", "message": str(e)}
+
+@router.get("/api/admin/analytics")
+def get_analytics():
+    """Get summarized traffic stats (last 7 days page views)."""
+    try:
+        with engine.connect() as conn:
+            # Group by date for the chart
+            daily_views = conn.execute(text("""
+                SELECT DATE(viewed_at) as date, COUNT(*) as views
+                FROM page_views
+                WHERE viewed_at >= CURRENT_DATE - INTERVAL '7 days'
+                GROUP BY DATE(viewed_at)
+                ORDER BY date ASC
+            """)).fetchall()
+            
+            # Total views all time
+            total_views = conn.execute(text("SELECT COUNT(*) FROM page_views")).scalar()
+            
+        chart_data = [{"date": str(r[0]), "views": r[1]} for r in daily_views]
+        
+        return {
+            "status": "success", 
+            "data": {
+                "chart": chart_data,
+                "total_views": total_views
+            }
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

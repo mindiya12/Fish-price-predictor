@@ -31,16 +31,16 @@ jobs:
         run: |
           echo "Scraping Weather..."
           python backend/scripts/scrape_weather.py
-          
+
           echo "Scraping Fuel Prices..."
           python backend/scripts/scrape_fuel_prices.py
-          
+
           echo "Scraping Inflation..."
           python backend/scripts/scrape_inflation.py
-          
+
           echo "Scraping Fish Prices..."
           python backend/scripts/scrape_fish_prices.py
-          
+
           echo "Retraining XGBoost Models..."
           # Note: We run it from the backend dir to match path expectations in the script
           export MODELS_DIR=${{ github.workspace }}/backend/models

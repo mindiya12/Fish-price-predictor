@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Download, FileSpreadsheet, Clipboard, CheckCircle2 } from "lucide-react";
 
 type Props = {
   clipboardText: string;
@@ -10,9 +11,6 @@ type Props = {
   excelLabel?: string;
   copyLabel?: string;
 };
-
-const btn =
-  "rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm text-slate-700 shadow-sm transition hover:bg-slate-50";
 
 export default function DownloadActions({
   clipboardText,
@@ -29,44 +27,85 @@ export default function DownloadActions({
     window.setTimeout(() => setToast(null), 2500);
   };
 
-  const backendNotReady = () => showToast("Backend not connected");
-
   const copyToClipboard = async () => {
     try {
       await navigator.clipboard.writeText(clipboardText);
-      showToast("Copied!");
+      showToast("Copied to clipboard!");
     } catch {
       showToast("Copy failed");
     }
   };
 
+  const actions = [
+    {
+      label: csvLabel,
+      icon: <Download size={15} />,
+      onClick: () => (csvUrl ? (window.location.href = csvUrl) : showToast("Not available")),
+      color: '#00D4FF',
+    },
+    {
+      label: excelLabel,
+      icon: <FileSpreadsheet size={15} />,
+      onClick: () => (excelUrl ? (window.location.href = excelUrl) : showToast("Not available")),
+      color: '#10D9A0',
+    },
+    {
+      label: copyLabel,
+      icon: <Clipboard size={15} />,
+      onClick: copyToClipboard,
+      color: '#00B4A0',
+    },
+  ];
+
   return (
-    <div className="flex flex-wrap items-center gap-3">
-      <button
-        type="button"
-        className={btn}
-        onClick={() => (csvUrl ? (window.location.href = csvUrl) : backendNotReady())}
-      >
-        {csvLabel}
-      </button>
+    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.75rem' }}>
+      {actions.map((action) => (
+        <button
+          key={action.label}
+          type="button"
+          onClick={action.onClick}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            padding: '0.625rem 1.125rem',
+            borderRadius: '0.625rem',
+            fontSize: '0.85rem',
+            fontWeight: 600,
+            cursor: 'pointer',
+            transition: 'all 0.2s',
+            color: action.color,
+            background: `${action.color}0D`,
+            border: `1px solid ${action.color}25`,
+          }}
+          onMouseEnter={e => {
+            (e.currentTarget as HTMLElement).style.background = `${action.color}1A`;
+            (e.currentTarget as HTMLElement).style.borderColor = `${action.color}45`;
+          }}
+          onMouseLeave={e => {
+            (e.currentTarget as HTMLElement).style.background = `${action.color}0D`;
+            (e.currentTarget as HTMLElement).style.borderColor = `${action.color}25`;
+          }}
+        >
+          {action.icon}
+          {action.label}
+        </button>
+      ))}
 
-      <button
-        type="button"
-        className={btn}
-        onClick={() => (excelUrl ? (window.location.href = excelUrl) : backendNotReady())}
-      >
-        {excelLabel}
-      </button>
-
-      <button type="button" className={btn} onClick={copyToClipboard}>
-        {copyLabel}
-      </button>
-
-      {toast ? (
-        <div className="text-sm text-slate-700 rounded-lg bg-brand-light px-3 py-2 ring-1 ring-black/5">
+      {toast && (
+        <div style={{
+          display: 'inline-flex', alignItems: 'center', gap: '0.375rem',
+          fontSize: '0.8rem', fontWeight: 600,
+          color: '#10D9A0',
+          background: 'rgba(16, 217, 160, 0.1)',
+          border: '1px solid rgba(16, 217, 160, 0.2)',
+          padding: '0.5rem 0.875rem',
+          borderRadius: '0.625rem',
+        }}>
+          <CheckCircle2 size={14} />
           {toast}
         </div>
-      ) : null}
+      )}
     </div>
   );
 }

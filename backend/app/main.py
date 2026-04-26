@@ -4,7 +4,7 @@ from sqlalchemy import text
 from app.core.config import settings
 from app.db.session import engine
 from pathlib import Path
-from app.api import history, forecast, download, fish, admin
+from app.api import history, forecast, download, fish, admin, alerts, reports
 from app.api.admin import run_daily_scrape
 from apscheduler.schedulers.background import BackgroundScheduler
 
@@ -17,6 +17,8 @@ app.include_router(forecast.router)
 app.include_router(download.router)
 app.include_router(fish.router)
 app.include_router(admin.router)
+app.include_router(alerts.router)
+app.include_router(reports.router)
 
 app.add_middleware(
     CORSMiddleware,
