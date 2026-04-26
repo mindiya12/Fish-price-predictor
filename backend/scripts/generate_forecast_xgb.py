@@ -3,7 +3,8 @@ Ensemble Inference Script - Phase 2
 =====================================
 Changes from Phase 1:
   - Loads both XGBoost (_h{n}.pkl) and LightGBM (_h{n}_lgbm.pkl) models
-  - Applies 40% XGB + 40% LGBM + 20% MA7 ensemble blend
+  - Predicts delta (price[t+h] - price[t]), then reconstructs absolute price
+  - Applies 45% XGB + 45% LGBM + 10% rolling-baseline (row-wise)
   - Confidence bands from RMSE in model_metrics
   - Feature row built entirely from DB (no Excel dependency)
 """
@@ -26,9 +27,9 @@ LOCATION     = os.environ.get("LOCATION", "peliyagoda")
 MODELS_DIR   = os.environ.get("MODELS_DIR", "/app/models")
 
 # Phase 2 blend weights (must match train_models_xgb.py)
-XGB_WEIGHT  = 0.40
-LGBM_WEIGHT = 0.40
-MA7_WEIGHT  = 0.20
+XGB_WEIGHT  = 0.45
+LGBM_WEIGHT = 0.45
+BASE_WEIGHT = 0.10
 
 
 def build_inference_row(engine) -> pd.DataFrame:
@@ -54,6 +55,7 @@ def build_inference_row(engine) -> pd.DataFrame:
 
         latest = price_df.iloc[-1]
         d = latest["date"].date()
+        price_today = float(latest["price"])
 
         # --- Latest weather (last available row for each city) ---
         weather_rows = conn.execute(text("""
@@ -184,10 +186,10 @@ def build_inference_row(engine) -> pd.DataFrame:
     row["price_volatility_30d"] = row["price_roll_std_30"]
 
     # Production placeholders (no data yet)
-    for col in ["Galle_production", "Kalutara_production", "Matara_production",
-                "Negombo_production", "Tangalla_production", "total_production",
-                "production_change", "production_lag1", "production_lag7"]:
-        row[col] = 0.0
+    # (intentionally omitted — not used for training)
+
+    # Keep today's observed price for reconstruction (not used as a model feature)
+    row["price_current"] = price_today
 
     return pd.DataFrame([row])
 
@@ -217,20 +219,16 @@ def main():
     X_latest = build_inference_row(engine)
     print(f"  Feature row shape: {X_latest.shape}")
 
-    # MA7 for blending
-    with engine.connect() as conn:
-        rows = conn.execute(text("""
-            SELECT price FROM price_history
-            WHERE fish = :fish AND location = :location
-            ORDER BY date DESC LIMIT 7
-        """), {"fish": FISH, "location": LOCATION}).fetchall()
+    if "price_current" not in X_latest.columns:
+        raise RuntimeError("Inference row missing price_current.")
+    price_today = float(X_latest["price_current"].iloc[0])
 
-        if not rows:
-            raise RuntimeError("No price history data found.")
-        ma7 = sum(float(r[0]) for r in rows) / len(rows)
+    baseline_delta = 0.0
+    if "price_roll_mean_7" in X_latest.columns:
+        baseline_delta = float(X_latest["price_roll_mean_7"].iloc[0]) - price_today
 
-    print(f"  MA7 = {ma7:.2f} (from last {len(rows)} days)")
-    print(f"  Blend: XGB×{XGB_WEIGHT}  MA7×{MA7_WEIGHT}")
+    print(f"  Target: Δ(price) per horizon (price[t+h] - price[t])")
+    print(f"  Blend: XGB×{XGB_WEIGHT}  LGBM×{LGBM_WEIGHT}  BASE×{BASE_WEIGHT}")
 
     forecast_date = date.today()
     predictions = {}
@@ -264,11 +262,13 @@ def main():
         if os.path.exists(lgbm_path):
             lgbm_model = joblib.load(lgbm_path)
             pred_lgbm  = float(lgbm_model.predict(X_input)[0])
-            blended = XGB_WEIGHT * pred_xgb + LGBM_WEIGHT * pred_lgbm + MA7_WEIGHT * ma7
+            blended_delta = XGB_WEIGHT * pred_xgb + LGBM_WEIGHT * pred_lgbm + BASE_WEIGHT * baseline_delta
         else:
-            # Fallback: Phase 1 blend if LGBM not yet trained
+            # Fallback: delta-only if LGBM not yet trained
             pred_lgbm = pred_xgb
-            blended   = 0.7 * pred_xgb + 0.3 * ma7
+            blended_delta = pred_xgb
+
+        blended = price_today + blended_delta
 
         rmse = get_rmse_from_db(engine, h)
         lo = blended - rmse if rmse else blended * 0.95
@@ -283,7 +283,7 @@ def main():
     print("\nInference results:")
     for h, p in predictions.items():
         target = forecast_date + timedelta(days=h)
-        print(f"  h={h} ({target}): XGB={p['xgb']:.1f}  LGBM={p['lgbm']:.1f}  Ensemble={p['blended']:.1f}  CI=[{p['lo']:.0f},{p['hi']:.0f}]  RMSE±{p['rmse']:.1f}")
+        print(f"  h={h} ({target}): ΔXGB={p['xgb']:+.1f}  ΔLGBM={p['lgbm']:+.1f}  Price={p['blended']:.1f}  CI=[{p['lo']:.0f},{p['hi']:.0f}]  RMSE±{p['rmse']:.1f}")
 
     # Upsert into forecasts table
     insert_q = text("""
@@ -308,7 +308,7 @@ def main():
                 "hi":            predictions[h]["hi"],
                 "location":      LOCATION,
                 "fish":          FISH,
-                "model_version": "xgboost_p1_blend",
+                "model_version": "ensemble_p2_delta",
             })
 
     print("\n✅ Phase 2 ensemble forecasts saved to database successfully.")

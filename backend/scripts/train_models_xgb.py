@@ -5,7 +5,7 @@ Phase 2 additions:
   - LightGBM trained per horizon alongside XGBoost
   - XGBoost early stopping (no more overfitting on 1500 trees)
   - TimeSeriesSplit (5-fold) CV for realistic out-of-sample evaluation
-  - Blend updated: 40% XGB + 40% LGBM + 20% MA7
+  - Blend updated: 45% XGB + 45% LGBM + 10% rolling-baseline (row-wise)
   - Per-model metrics reported separately then combined
 """
 
@@ -29,10 +29,10 @@ FISH         = os.environ.get("FISH", "balaya")
 LOCATION     = os.environ.get("LOCATION", "peliyagoda")
 MODELS_DIR   = os.environ.get("MODELS_DIR", "/app/models")
 
-# Phase 2 blend: 40% XGB + 40% LGBM + 20% MA7
-XGB_WEIGHT  = 0.40
-LGBM_WEIGHT = 0.40
-MA7_WEIGHT  = 0.20
+# Phase 2 blend: 45% XGB + 45% LGBM + 10% baseline (row-wise)
+XGB_WEIGHT   = 0.45
+LGBM_WEIGHT  = 0.45
+BASE_WEIGHT  = 0.10
 
 XGB_PARAMS = {
     "n_estimators":     2000,   # higher ceiling, early stopping controls final count
@@ -115,7 +115,6 @@ def load_training_data(engine) -> pd.DataFrame:
     df["year"]         = df["date"].dt.year
     df["month"]        = df["date"].dt.month
     df["day_of_week"]  = df["date"].dt.dayofweek
-    df["is_weekend"]   = (df["day_of_week"] >= 5).astype(int)
     df["quarter"]      = df["date"].dt.quarter
     df["day_of_year"]  = df["date"].dt.dayofyear
     df["day_of_month"] = df["date"].dt.day
@@ -127,8 +126,6 @@ def load_training_data(engine) -> pd.DataFrame:
     df["cos_day_year"] = np.cos(2*np.pi*df["day_of_year"]/365)
     df["sin_week"]     = np.sin(2*np.pi*df["week_of_year"]/52)
     df["cos_week"]     = np.cos(2*np.pi*df["week_of_year"]/52)
-    df["is_national_holiday"] = 0
-    df["is_market_holiday"]   = df["is_weekend"]
 
     # Poya features
     date_col = df["date"].dt.date
@@ -186,13 +183,10 @@ def clean_data(df, feats):
 
 def get_feature_cols(df):
     core = [
-        'year','month','day_of_week','is_weekend','day_of_year','quarter','day_of_month','week_of_year',
+        'year','month','day_of_week','day_of_year','quarter','day_of_month','week_of_year',
         'sin_month','cos_month','sin_day_year','cos_day_year','sin_week','cos_week',
-        'is_national_holiday','is_market_holiday',
         'is_poya','days_until_next_poya','days_since_last_poya','is_pre_poya','is_post_poya',
         'Inflation_Rate','CCPI_Food','LP 95','LP 92','LAD','LSD','LK',
-        'Galle_production','Kalutara_production','Matara_production','Negombo_production','Tangalla_production',
-        'total_production','production_change','production_lag1','production_lag7',
         'Matara_temp_mean_C','Matara_wind_max_kmh','Matara_gust_max_kmh','Matara_precip_mm',
         'Galle_temp_mean_C','Galle_wind_max_kmh','Galle_gust_max_kmh','Galle_precip_mm',
         'Negombo_temp_mean_C','Negombo_wind_max_kmh','Negombo_gust_max_kmh','Negombo_precip_mm',
@@ -266,7 +260,8 @@ def main():
     df = load_training_data(engine)
     feature_cols = get_feature_cols(df)
     print(f"\nUsing {len(feature_cols)} features")
-    print(f"Blend: XGB×{XGB_WEIGHT}  LGBM×{LGBM_WEIGHT}  MA7×{MA7_WEIGHT}\n")
+    print(f"Target: Δ(price) per horizon (price[t+h] - price[t])")
+    print(f"Blend: XGB×{XGB_WEIGHT}  LGBM×{LGBM_WEIGHT}  BASE×{BASE_WEIGHT}\n")
 
     test_size = 30
     train_df = df.iloc[:-test_size].copy()
@@ -285,10 +280,14 @@ def main():
         print(f"  Horizon h={h}")
         print(f"{'='*50}")
 
-        y_train_full = train_df[TARGET_COL].shift(-h).dropna()
+        # Train on delta: price[t+h] - price[t]
+        y_train_full = (train_df[TARGET_COL].shift(-h) - train_df[TARGET_COL]).dropna()
         X_train_full = train_df[feature_cols].iloc[:len(y_train_full)]
-        y_test       = test_df[TARGET_COL].shift(-h).dropna()
+        # Holdout labels (delta and absolute)
+        y_test       = (test_df[TARGET_COL].shift(-h) - test_df[TARGET_COL]).dropna()
         X_test       = test_df[feature_cols].iloc[:len(y_test)]
+        y_test_abs   = test_df[TARGET_COL].shift(-h).dropna()
+        base_price   = test_df[TARGET_COL].iloc[:len(y_test_abs)].astype(float).values
 
         # ── Phase 2: TimeSeriesSplit CV ───────────────────────────────────────
         print(f"\n  [CV] Running 5-fold TimeSeriesSplit...")
@@ -322,18 +321,29 @@ def main():
         print(f"    Best iteration: {lgbm_model.best_iteration_} trees")
 
         # ── Holdout evaluation ────────────────────────────────────────────────
-        if len(y_test) > 0:
-            xgb_preds  = xgb_model.predict(X_test)
-            lgbm_preds = lgbm_model.predict(X_test)
-            # Ensemble on holdout
-            ma7_val    = float(train_df["price"].tail(7).mean())
-            ens_preds  = XGB_WEIGHT * xgb_preds + LGBM_WEIGHT * lgbm_preds + MA7_WEIGHT * ma7_val
+        if len(y_test) > 0 and len(y_test_abs) > 0:
+            xgb_delta  = xgb_model.predict(X_test)
+            lgbm_delta = lgbm_model.predict(X_test)
+
+            # Row-wise baseline: (rolling mean 7 - today's price) as delta
+            # price_roll_mean_7 is computed from shifted series (excludes current price), safe at time t.
+            if "price_roll_mean_7" in test_df.columns:
+                baseline_delta = (test_df["price_roll_mean_7"].iloc[:len(y_test_abs)].astype(float).values - base_price)
+            else:
+                baseline_delta = np.zeros_like(base_price, dtype=float)
+
+            ens_delta = XGB_WEIGHT * xgb_delta + LGBM_WEIGHT * lgbm_delta + BASE_WEIGHT * baseline_delta
+
+            # Convert delta predictions back to absolute price for reporting/storing metrics
+            xgb_preds  = base_price + xgb_delta
+            lgbm_preds = base_price + lgbm_delta
+            ens_preds  = base_price + ens_delta
 
             def metrics_row(name, preds):
-                rmse = float(np.sqrt(mean_squared_error(y_test, preds)))
-                mae  = float(mean_absolute_error(y_test, preds))
-                mape = float(mean_absolute_percentage_error(y_test, preds)*100)
-                r2   = float(r2_score(y_test, preds))
+                rmse = float(np.sqrt(mean_squared_error(y_test_abs, preds)))
+                mae  = float(mean_absolute_error(y_test_abs, preds))
+                mape = float(mean_absolute_percentage_error(y_test_abs, preds)*100)
+                r2   = float(r2_score(y_test_abs, preds))
                 print(f"    {name:10s}: RMSE={rmse:.2f}  MAE={mae:.2f}  MAPE={mape:.2f}%  R²={r2:.3f}")
                 return rmse, mae, mape, r2
 
@@ -362,7 +372,7 @@ def main():
         })
 
     # ── Save metrics to DB ─────────────────────────────────────────────────────
-    model_version = f"ensemble_p2_{pd.Timestamp.now().strftime('%Y%m%d')}"
+    model_version = f"ensemble_p2_delta_{pd.Timestamp.now().strftime('%Y%m%d')}"
     with engine.begin() as conn:
         conn.execute(text(
             "UPDATE model_metrics SET is_production=FALSE WHERE fish=:fish AND location=:location"
@@ -388,19 +398,22 @@ def main():
 
     # ── Generate blended forecasts ─────────────────────────────────────────────
     last_row = test_df.iloc[[-1]]
-    ma7 = float(df["price"].tail(7).mean())
-    print(f"\nGenerating 3-day ensemble forecast (MA7={ma7:.0f}):")
+    print(f"\nGenerating 3-day ensemble forecast (delta-target):")
 
     with engine.begin() as conn:
         for h in range(1, 4):
-            xgb_pred  = float(xgb_models[h].predict(last_row[feature_cols])[0])
-            lgbm_pred = float(lgbm_models[h].predict(last_row[feature_cols])[0])
-            blended   = XGB_WEIGHT * xgb_pred + LGBM_WEIGHT * lgbm_pred + MA7_WEIGHT * ma7
+            base_today = float(last_row["price"].iloc[0])
+            baseline_delta = float((last_row["price_roll_mean_7"].iloc[0] - base_today)) if "price_roll_mean_7" in last_row.columns else 0.0
+
+            xgb_delta  = float(xgb_models[h].predict(last_row[feature_cols])[0])
+            lgbm_delta = float(lgbm_models[h].predict(last_row[feature_cols])[0])
+            blended_delta = XGB_WEIGHT * xgb_delta + LGBM_WEIGHT * lgbm_delta + BASE_WEIGHT * baseline_delta
+            blended = base_today + blended_delta
             rmse_h    = next(m["rmse"] for m in metrics if m["horizon"] == h)
             lo, hi    = blended - rmse_h, blended + rmse_h
             target    = (df["date"].iloc[-1] + pd.Timedelta(days=h)).date()
 
-            print(f"  h={h} ({target}): XGB={xgb_pred:.1f}  LGBM={lgbm_pred:.1f}  Ensemble={blended:.1f}  CI=[{lo:.0f},{hi:.0f}]")
+            print(f"  h={h} ({target}): ΔXGB={xgb_delta:+.1f}  ΔLGBM={lgbm_delta:+.1f}  Price={blended:.1f}  CI=[{lo:.0f},{hi:.0f}]")
             conn.execute(text("""
                 INSERT INTO forecasts (forecast_date, horizon, blended_prediction, conf_lower, conf_upper, model_version, fish, location)
                 VALUES (:fd,:h,:p,:lo,:hi,:ver,:fish,:loc)
