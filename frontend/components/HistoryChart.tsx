@@ -69,7 +69,11 @@ export default function HistoryChart({ rows, label = "Actual price" }: Props) {
         bodyFont: { weight: "bold" as any, size: 14 },
         padding: 12,
         callbacks: {
-          label: (ctx) => `  Rs. ${ctx.parsed.y.toLocaleString()}`,
+          label: (ctx) => {
+            const y = ctx.parsed?.y;
+            if (typeof y !== "number") return "  Rs. —";
+            return `  Rs. ${y.toLocaleString()}`;
+          },
         },
       },
     },

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, type CSSProperties } from "react";
 import { animate, motion, useMotionValue, useTransform, useReducedMotion } from "framer-motion";
 
 type AnimatedNumberProps = {
@@ -8,6 +8,7 @@ type AnimatedNumberProps = {
   duration?: number;     // seconds
   decimals?: number;     // 0 for Rs.
   className?: string;
+  style?: CSSProperties;
 };
 
 export default function AnimatedNumber({
@@ -15,6 +16,7 @@ export default function AnimatedNumber({
   duration = 0.8,
   decimals = 0,
   className,
+  style,
 }: AnimatedNumberProps) {
   const reduceMotion = useReducedMotion();
   const mv = useMotionValue(0);
@@ -40,7 +42,7 @@ export default function AnimatedNumber({
 
   if (reduceMotion) {
     return (
-      <span className={className}>
+      <span className={className} style={style}>
         {value.toLocaleString(undefined, {
           minimumFractionDigits: decimals,
           maximumFractionDigits: decimals,
@@ -49,5 +51,9 @@ export default function AnimatedNumber({
     );
   }
 
-  return <motion.span className={className}>{display}</motion.span>;
+  return (
+    <motion.span className={className} style={style}>
+      {display}
+    </motion.span>
+  );
 }
