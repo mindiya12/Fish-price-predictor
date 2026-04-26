@@ -49,7 +49,7 @@ export default function PipelinePage() {
           </div>
           
           <p className="text-zinc-400 mb-6 text-sm leading-relaxed">
-            The automated pipeline runs daily at 5:00 AM via GitHub Actions. If today's CBSL report was published late, or you noticed missing data, you can force a manual trigger here.
+            The automated pipeline runs daily at 5:00 AM via GitHub Actions. If today&apos;s CBSL report was published late, or you noticed missing data, you can force a manual trigger here.
           </p>
 
           <button

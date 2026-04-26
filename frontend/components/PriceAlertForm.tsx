@@ -67,7 +67,7 @@ export default function PriceAlertForm() {
         }}>
           <CheckCircle2 size={32} style={{ margin: '0 auto 0.75rem' }} />
           <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>Alert Set Successfully!</div>
-          <div style={{ fontSize: '0.75rem', marginTop: '0.25rem' }}>We'll email you when the price hits your target.</div>
+          <div style={{ fontSize: '0.75rem', marginTop: '0.25rem' }}>We&apos;ll email you when the price hits your target.</div>
         </div>
       ) : (
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
