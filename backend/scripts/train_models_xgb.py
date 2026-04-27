@@ -46,6 +46,8 @@ XGB_PARAMS = {
     "random_state":     42,
     "n_jobs":           -1,
     "early_stopping_rounds": 50,
+    # Robust to spikes; improves MAE in practice for jumpy series
+    "objective":        "reg:pseudohubererror",
     "eval_metric":      "rmse",
 }
 
@@ -61,6 +63,7 @@ LGBM_PARAMS = {
     "random_state":     42,
     "n_jobs":           -1,
     "verbose":          -1,
+    "objective":        "huber",
 }
 
 TARGET_COL      = "price"
@@ -167,6 +170,40 @@ def load_training_data(engine) -> pd.DataFrame:
     df["price_volatility_7d"]     = p.rolling(7).std()
     df["price_volatility_30d"]    = p.rolling(30).std()
 
+    # ── Exogenous change features (focus on "between two dates") ────────────
+    # Use shifted(1) to ensure only past info at time t.
+    exog_shift = 1
+
+    # Fuel deltas (1d, 7d)
+    for col in ["LP 95", "LP 92", "LAD", "LSD", "LK"]:
+        if col in df.columns:
+            s = df[col].shift(exog_shift)
+            df[f"{col}_chg_1d"] = s.diff(1)
+            df[f"{col}_chg_7d"] = s.diff(7)
+
+    # Inflation changes (month-to-month proxy; daily forward-filled)
+    for col in ["Inflation_Rate", "CCPI_Food"]:
+        if col in df.columns:
+            s = df[col].shift(exog_shift)
+            df[f"{col}_chg_30d"] = s.diff(30)
+
+    # Weather aggregates on avg_* signals (lagged + rolling)
+    for col in ["avg_temp_mean_C", "avg_wind_max_kmh", "avg_gust_max_kmh", "avg_precip_mm"]:
+        if col in df.columns:
+            s = df[col].shift(exog_shift)
+            df[f"{col}_lag1"] = s.shift(0)
+            df[f"{col}_roll_mean_3"] = s.rolling(3).mean()
+            df[f"{col}_roll_mean_7"] = s.rolling(7).mean()
+            if "precip" in col:
+                df[f"{col}_roll_sum_3"] = s.rolling(3).sum()
+                df[f"{col}_roll_sum_7"] = s.rolling(7).sum()
+
+    # Regime: delta-volatility and shock flags
+    d1 = df["price_change_1d"].shift(1)
+    df["delta_roll_std_7"]  = d1.rolling(7).std()
+    df["delta_roll_std_30"] = d1.rolling(30).std()
+    df["shock_1d"] = (d1.abs() > (1.5 * (df["delta_roll_std_30"] + 1e-9))).astype(int)
+
     df = df.dropna(subset=["price_lag1","price_lag7","price_lag30"]).reset_index(drop=True)
     print(f"Training data: {len(df)} rows | {df['is_poya'].sum()} Poya days | {len(df.columns)} cols")
     return df
@@ -203,10 +240,88 @@ def get_feature_cols(df):
         'price_pct_change_1d','price_pct_change_7d','price_acceleration',
         'price_dev_from_7d','price_dev_from_30d','price_trend_ratio_7_30',
         'price_volatility_7d','price_volatility_30d',
+        # Exogenous change/regime features (added above; included if present)
+        'LP 95_chg_1d','LP 95_chg_7d','LP 92_chg_1d','LP 92_chg_7d','LAD_chg_1d','LAD_chg_7d','LSD_chg_1d','LSD_chg_7d','LK_chg_1d','LK_chg_7d',
+        'Inflation_Rate_chg_30d','CCPI_Food_chg_30d',
+        'avg_temp_mean_C_lag1','avg_temp_mean_C_roll_mean_3','avg_temp_mean_C_roll_mean_7',
+        'avg_wind_max_kmh_lag1','avg_wind_max_kmh_roll_mean_3','avg_wind_max_kmh_roll_mean_7',
+        'avg_gust_max_kmh_lag1','avg_gust_max_kmh_roll_mean_3','avg_gust_max_kmh_roll_mean_7',
+        'avg_precip_mm_lag1','avg_precip_mm_roll_mean_3','avg_precip_mm_roll_mean_7','avg_precip_mm_roll_sum_3','avg_precip_mm_roll_sum_7',
+        'delta_roll_std_7','delta_roll_std_30','shock_1d',
     ]
     available = [c for c in core if c in df.columns]
     extra = [c for c in df.columns if c not in COLS_TO_EXCLUDE + ["date","ym"] and c not in available]
     return available + extra
+
+
+def rolling_backtest(df: pd.DataFrame, feature_cols: list[str], horizon: int, window: int = 30, step: int = 15, min_train: int = 240):
+    """
+    Rolling-origin backtest on the *tail* of the dataset.
+    Evaluates absolute price error while training on delta targets.
+    """
+    y_abs = df[TARGET_COL].shift(-horizon)
+    y_delta = (df[TARGET_COL].shift(-horizon) - df[TARGET_COL])
+    base = df[TARGET_COL].astype(float).values
+
+    # Only consider rows where label exists
+    valid = y_abs.notna()
+    idx = np.where(valid.values)[0]
+    if len(idx) < (min_train + window):
+        return None
+
+    start = max(min_train, idx[0])
+    end = idx[-1] - window + 1
+    starts = list(range(start, end, step))
+    rmses, maes = [], []
+
+    for s in starts:
+        tr_end = s
+        te_end = s + window
+        tr = df.iloc[:tr_end].copy()
+        te = df.iloc[tr_end:te_end].copy()
+
+        tr = clean_data(tr, feature_cols)
+        te = clean_data(te, feature_cols)
+
+        y_tr = y_delta.iloc[:tr_end].dropna()
+        X_tr = tr[feature_cols].iloc[:len(y_tr)]
+        y_te_abs = y_abs.iloc[tr_end:te_end].dropna()
+        X_te = te[feature_cols].iloc[:len(y_te_abs)]
+        base_te = base[tr_end:tr_end + len(y_te_abs)]
+
+        val_size = max(15, int(len(X_tr) * 0.1))
+        X_tr2, X_es = X_tr.iloc[:-val_size], X_tr.iloc[-val_size:]
+        y_tr2, y_es = y_tr.iloc[:-val_size], y_tr.iloc[-val_size:]
+
+        xgb = XGBRegressor(**XGB_PARAMS)
+        xgb.fit(X_tr2, y_tr2, eval_set=[(X_es, y_es)], verbose=False)
+
+        lgbm = LGBMRegressor(**LGBM_PARAMS)
+        lgbm.fit(
+            X_tr2, y_tr2,
+            eval_set=[(X_es, y_es)],
+            callbacks=[
+                __import__("lightgbm").early_stopping(stopping_rounds=50, verbose=False),
+                __import__("lightgbm").log_evaluation(period=-1),
+            ]
+        )
+
+        dx = xgb.predict(X_te)
+        dl = lgbm.predict(X_te)
+        baseline_delta = (te["price_roll_mean_7"].iloc[:len(y_te_abs)].astype(float).values - base_te) if "price_roll_mean_7" in te.columns else 0.0
+        d = XGB_WEIGHT * dx + LGBM_WEIGHT * dl + BASE_WEIGHT * baseline_delta
+        pred_abs = base_te + d
+
+        rmses.append(float(np.sqrt(mean_squared_error(y_te_abs, pred_abs))))
+        maes.append(float(mean_absolute_error(y_te_abs, pred_abs)))
+
+    return {
+        "windows": len(starts),
+        "rmse_mean": float(np.mean(rmses)) if rmses else None,
+        "mae_mean": float(np.mean(maes)) if maes else None,
+        "rmse_std": float(np.std(rmses)) if rmses else None,
+        "mae_std": float(np.std(maes)) if maes else None,
+    }
 
 
 # ── PHASE 2: TIME-SERIES CROSS-VALIDATION ─────────────────────────────────────
@@ -295,6 +410,11 @@ def main():
         print(f"\n  CV Summary:")
         print(f"    XGB  → CV RMSE={cv_results['xgb_cv_rmse']:.2f}  CV MAPE={cv_results['xgb_cv_mape']:.2f}%")
         print(f"    LGBM → CV RMSE={cv_results['lgbm_cv_rmse']:.2f}  CV MAPE={cv_results['lgbm_cv_mape']:.2f}%")
+
+        # ── Rolling backtest (more stable than single 30d holdout) ───────────
+        bt = rolling_backtest(df, feature_cols, horizon=h, window=30, step=15, min_train=240)
+        if bt and bt["rmse_mean"] is not None:
+            print(f"\n  [Backtest] {bt['windows']} windows: RMSE={bt['rmse_mean']:.2f}±{bt['rmse_std']:.2f}  MAE={bt['mae_mean']:.2f}±{bt['mae_std']:.2f}")
 
         # ── Phase 2: XGBoost with early stopping ─────────────────────────────
         print(f"\n  [XGB] Training with early stopping...")
