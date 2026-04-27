@@ -28,6 +28,10 @@ DATABASE_URL = os.environ.get("DATABASE_URL")
 FISH         = os.environ.get("FISH", "balaya")
 LOCATION     = os.environ.get("LOCATION", "peliyagoda")
 MODELS_DIR   = os.environ.get("MODELS_DIR", "/app/models")
+RUN_HEAVY_EVAL = os.environ.get("RUN_HEAVY_EVAL", "0").lower() in ("1", "true", "yes", "y")
+CV_SPLITS      = int(os.environ.get("CV_SPLITS", "5"))
+BACKTEST_WIN   = int(os.environ.get("BACKTEST_WIN", "30"))
+BACKTEST_STEP  = int(os.environ.get("BACKTEST_STEP", "15"))
 
 # Phase 2 blend: 45% XGB + 45% LGBM + 10% baseline (row-wise)
 XGB_WEIGHT   = 0.45
@@ -377,6 +381,7 @@ def main():
     print(f"\nUsing {len(feature_cols)} features")
     print(f"Target: Δ(price) per horizon (price[t+h] - price[t])")
     print(f"Blend: XGB×{XGB_WEIGHT}  LGBM×{LGBM_WEIGHT}  BASE×{BASE_WEIGHT}\n")
+    print(f"Heavy eval (CV+backtest): {'ON' if RUN_HEAVY_EVAL else 'OFF'}")
 
     test_size = 30
     train_df = df.iloc[:-test_size].copy()
@@ -404,17 +409,19 @@ def main():
         y_test_abs   = test_df[TARGET_COL].shift(-h).dropna()
         base_price   = test_df[TARGET_COL].iloc[:len(y_test_abs)].astype(float).values
 
-        # ── Phase 2: TimeSeriesSplit CV ───────────────────────────────────────
-        print(f"\n  [CV] Running 5-fold TimeSeriesSplit...")
-        cv_results = run_tscv(X_train_full, y_train_full, XGB_PARAMS, LGBM_PARAMS)
-        print(f"\n  CV Summary:")
-        print(f"    XGB  → CV RMSE={cv_results['xgb_cv_rmse']:.2f}  CV MAPE={cv_results['xgb_cv_mape']:.2f}%")
-        print(f"    LGBM → CV RMSE={cv_results['lgbm_cv_rmse']:.2f}  CV MAPE={cv_results['lgbm_cv_mape']:.2f}%")
+        cv_results = {"xgb_cv_rmse": 0.0, "lgbm_cv_rmse": 0.0, "xgb_cv_mape": 0.0, "lgbm_cv_mape": 0.0}
+        if RUN_HEAVY_EVAL:
+            # ── Phase 2: TimeSeriesSplit CV ───────────────────────────────────
+            print(f"\n  [CV] Running {CV_SPLITS}-fold TimeSeriesSplit...")
+            cv_results = run_tscv(X_train_full, y_train_full, XGB_PARAMS, LGBM_PARAMS, n_splits=CV_SPLITS)
+            print(f"\n  CV Summary:")
+            print(f"    XGB  → CV RMSE={cv_results['xgb_cv_rmse']:.2f}  CV MAPE={cv_results['xgb_cv_mape']:.2f}%")
+            print(f"    LGBM → CV RMSE={cv_results['lgbm_cv_rmse']:.2f}  CV MAPE={cv_results['lgbm_cv_mape']:.2f}%")
 
-        # ── Rolling backtest (more stable than single 30d holdout) ───────────
-        bt = rolling_backtest(df, feature_cols, horizon=h, window=30, step=15, min_train=240)
-        if bt and bt["rmse_mean"] is not None:
-            print(f"\n  [Backtest] {bt['windows']} windows: RMSE={bt['rmse_mean']:.2f}±{bt['rmse_std']:.2f}  MAE={bt['mae_mean']:.2f}±{bt['mae_std']:.2f}")
+            # ── Rolling backtest (more stable than single 30d holdout) ───────
+            bt = rolling_backtest(df, feature_cols, horizon=h, window=BACKTEST_WIN, step=BACKTEST_STEP, min_train=240)
+            if bt and bt["rmse_mean"] is not None:
+                print(f"\n  [Backtest] {bt['windows']} windows: RMSE={bt['rmse_mean']:.2f}±{bt['rmse_std']:.2f}  MAE={bt['mae_mean']:.2f}±{bt['mae_std']:.2f}")
 
         # ── Phase 2: XGBoost with early stopping ─────────────────────────────
         print(f"\n  [XGB] Training with early stopping...")
