@@ -215,6 +215,85 @@ def load_training_data(engine) -> pd.DataFrame:
     df["delta_roll_std_30"] = d1.rolling(30).std()
     df["shock_1d"] = (d1.abs() > (1.5 * (df["delta_roll_std_30"] + 1e-9))).astype(int)
 
+    # ── ENHANCED FEATURE ENGINEERING (Phase 2.5) ──────────────────────────────
+    # These features focus on capturing price change patterns and regimes
+    
+    # 1. Non-linear price change indicators
+    df["price_change_squared"]     = df["price_change_1d"] ** 2  # Magnitude of shocks
+    df["price_change_abs"]         = np.abs(df["price_change_1d"])
+    df["price_change_sign_switch"] = (df["price_change_1d"] * df["price_change_1d"].shift(1) < 0).astype(int)  # Direction reversal
+    
+    # 2. Adaptive momentum (weighted by volatility regime)
+    vol_30 = df["price_volatility_30d"]
+    df["adaptive_momentum_1d"]  = df["price_change_1d"] / (vol_30 + 1e-9)  # Normalized by volatility
+    df["adaptive_momentum_7d"]  = df["price_change_7d"] / (vol_30 + 1e-9)
+    df["price_momentum_ratio"]  = (df["price_change_7d"] + 1e-9) / (df["price_change_1d"].abs() + 1e-9)  # Ratio of trends
+    
+    # 3. Acceleration features (2nd derivative of price)
+    df["price_acceleration_abs"]  = np.abs(df["price_acceleration"])
+    df["price_accel_signed"]      = df["price_acceleration"]  # Keep sign for direction
+    df["acceleration_momentum"]   = df["price_acceleration"] * df["price_change_1d"]  # Interaction
+    
+    # 4. Mean reversion indicators (how far from equilibrium)
+    df["price_drawdown_7d"]   = (df["price_roll_max_7"] - df["price_lag1"]) / (df["price_roll_range_7"] + 1e-9)  # 0=at min, 1=at max
+    df["price_drawup_7d"]     = (df["price_lag1"] - df["price_roll_min_7"]) / (df["price_roll_range_7"] + 1e-9)
+    df["price_drawdown_30d"]  = (df["price_roll_max_30"] - df["price_lag1"]) / (df["price_roll_range_30"] + 1e-9)
+    df["price_drawup_30d"]    = (df["price_lag1"] - df["price_roll_min_30"]) / (df["price_roll_range_30"] + 1e-9)
+    
+    # 5. Volatility regime flags
+    vol_7_p75 = df["price_volatility_7d"].quantile(0.75)
+    vol_7_p90 = df["price_volatility_7d"].quantile(0.90)
+    df["high_volatility_flag"]     = (df["price_volatility_7d"] > vol_7_p75).astype(int)
+    df["extreme_volatility_flag"]  = (df["price_volatility_7d"] > vol_7_p90).astype(int)
+    df["vol_increasing"]           = (df["price_volatility_7d"] > df["price_volatility_7d"].shift(7)).astype(int)
+    
+    # 6. Shock duration and recovery
+    shock_series = d1.abs() > (1.5 * (df["delta_roll_std_30"] + 1e-9))
+    shock_groups = (shock_series != shock_series.shift()).cumsum()
+    df["shock_duration"] = shock_series.groupby(shock_groups).cumsum()
+    df["shock_duration"] = df["shock_duration"] * shock_series  # Zero out non-shock periods
+    df["days_since_shock"] = (~shock_series).groupby((~shock_series) != (~shock_series).shift()).cumsum()
+    df["days_since_shock"] = df["days_since_shock"] * (~shock_series)  # Zero out shock periods
+    
+    # 7. Cross-feature interactions (Price × Seasonality)
+    df["price_lag1_x_sin_month"]  = df["price_lag1"] * df["sin_month"]
+    df["price_lag1_x_cos_month"]  = df["price_lag1"] * df["cos_month"]
+    df["price_lag1_x_is_poya"]    = df["price_lag1"] * df["is_poya"]
+    df["price_lag1_x_is_pre_poya"] = df["price_lag1"] * df["is_pre_poya"]
+    df["change_x_day_of_week"]    = df["price_change_1d"] * (df["day_of_week"] - 2.5)  # Centered day_of_week
+    
+    # 8. Volatility × Macro interactions (better capture shock amplification)
+    if "LP 95" in df.columns and "LP 92" in df.columns:
+        lp95_pct_change = df["LP 95"].pct_change(1).fillna(0)
+        df["volatility_x_fuel_change"] = df["price_volatility_7d"] * lp95_pct_change
+    
+    if "Inflation_Rate" in df.columns:
+        df["volatility_x_inflation"] = df["price_volatility_7d"] * (df["Inflation_Rate"] / 100.0 + 1e-9)
+    
+    if "avg_precip_mm" in df.columns:
+        df["precip_x_momentum"] = df["avg_precip_mm"] * df["price_change_1d"]
+    
+    # 9. Market sentiment indicators
+    df["velocity_of_change"] = df["price_change_1d"] - df["price_change_1d"].shift(1)  # Rate of change of momentum
+    df["consecutive_up_days"]  = ((df["price_change_1d"] > 0).astype(int) * 
+                                  ((df["price_change_1d"] > 0) == (df["price_change_1d"].shift(1) > 0)).astype(int)).rolling(7).sum()
+    df["consecutive_down_days"] = ((df["price_change_1d"] < 0).astype(int) * 
+                                   ((df["price_change_1d"] < 0) == (df["price_change_1d"].shift(1) < 0)).astype(int)).rolling(7).sum()
+    
+    # 10. Lag interaction with volatility (recent history weighted by risk)
+    df["price_lag1_weighted_vol"] = df["price_lag1"] * df["price_volatility_7d"]
+    df["price_lag7_weighted_vol"] = df["price_lag7"] * df["price_volatility_7d"]
+    
+    # 11. EWM momentum (exponentially weighted momentum)
+    df["momentum_ewm7"]  = df["price_change_1d"].ewm(span=7, adjust=False).mean()
+    df["momentum_ewm14"] = df["price_change_1d"].ewm(span=14, adjust=False).mean()
+    
+    # 12. Unexpected change detection (residual from macro explanations)
+    if "LP 95_chg_1d" in df.columns and "avg_precip_mm_lag1" in df.columns:
+        # Simple model: expected change from fuel + weather
+        df["expected_change_macro"] = (0.5 * df["LP 95_chg_1d"] + 0.1 * df["avg_precip_mm_lag1"])
+        df["unexpected_change"] = df["price_change_1d"] - df["expected_change_macro"]
+
     df = df.dropna(subset=["price_lag1","price_lag7","price_lag30"]).reset_index(drop=True)
     print(f"Training data: {len(df)} rows | {df['is_poya'].sum()} Poya days | {len(df.columns)} cols")
     return df
@@ -259,6 +338,32 @@ def get_feature_cols(df):
         'avg_gust_max_kmh_lag1','avg_gust_max_kmh_roll_mean_3','avg_gust_max_kmh_roll_mean_7',
         'avg_precip_mm_lag1','avg_precip_mm_roll_mean_3','avg_precip_mm_roll_mean_7','avg_precip_mm_roll_sum_3','avg_precip_mm_roll_sum_7',
         'delta_roll_std_7','delta_roll_std_30','shock_1d',
+        # ──── ENHANCED FEATURES (Phase 2.5) ────
+        # Non-linear price change indicators
+        'price_change_squared','price_change_abs','price_change_sign_switch',
+        # Adaptive momentum (volatility-normalized)
+        'adaptive_momentum_1d','adaptive_momentum_7d','price_momentum_ratio',
+        # Acceleration features (2nd derivative)
+        'price_acceleration_abs','price_accel_signed','acceleration_momentum',
+        # Mean reversion indicators (position in range)
+        'price_drawdown_7d','price_drawup_7d','price_drawdown_30d','price_drawup_30d',
+        # Volatility regime flags
+        'high_volatility_flag','extreme_volatility_flag','vol_increasing',
+        # Shock duration and recovery
+        'shock_duration','days_since_shock',
+        # Cross-feature interactions (Price × Seasonality)
+        'price_lag1_x_sin_month','price_lag1_x_cos_month','price_lag1_x_is_poya','price_lag1_x_is_pre_poya',
+        'change_x_day_of_week',
+        # Volatility × Macro interactions
+        'volatility_x_fuel_change','volatility_x_inflation','precip_x_momentum',
+        # Market sentiment indicators
+        'velocity_of_change','consecutive_up_days','consecutive_down_days',
+        # Lag interactions with volatility
+        'price_lag1_weighted_vol','price_lag7_weighted_vol',
+        # EWM momentum
+        'momentum_ewm7','momentum_ewm14',
+        # Unexpected change
+        'expected_change_macro','unexpected_change',
     ]
     available = [c for c in core if c in df.columns]
     extra = [c for c in df.columns if c not in COLS_TO_EXCLUDE + ["date","ym"] and c not in available]

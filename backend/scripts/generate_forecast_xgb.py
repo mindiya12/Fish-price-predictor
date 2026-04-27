@@ -284,6 +284,104 @@ def build_inference_row(engine) -> pd.DataFrame:
     row["delta_roll_std_30"] = std30
     row["shock_1d"] = int(abs(prev) > (1.5 * (std30 + 1e-9)))
 
+    # ── ENHANCED FEATURES (Phase 2.5) mirror training logic ────────────────
+    price_change_1d = row["price_change_1d"]
+    price_change_7d = row["price_change_7d"]
+    vol_30 = row["price_volatility_30d"]
+    
+    # 1. Non-linear price change indicators
+    row["price_change_squared"] = price_change_1d ** 2
+    row["price_change_abs"] = abs(price_change_1d)
+    prev_change_1d = float(deltas.iloc[-2]) if len(deltas) >= 2 else 0.0
+    row["price_change_sign_switch"] = int((price_change_1d * prev_change_1d) < 0)
+    
+    # 2. Adaptive momentum (volatility-normalized)
+    row["adaptive_momentum_1d"] = price_change_1d / (vol_30 + 1e-9)
+    row["adaptive_momentum_7d"] = price_change_7d / (vol_30 + 1e-9)
+    row["price_momentum_ratio"] = (price_change_7d + 1e-9) / (abs(price_change_1d) + 1e-9)
+    
+    # 3. Acceleration features
+    price_accel = row["price_acceleration"]
+    row["price_acceleration_abs"] = abs(price_accel)
+    row["price_accel_signed"] = price_accel
+    row["acceleration_momentum"] = price_accel * price_change_1d
+    
+    # 4. Mean reversion indicators (position in range)
+    pr_range_7 = row["price_roll_range_7"]
+    pr_range_30 = row["price_roll_range_30"]
+    row["price_drawdown_7d"] = (row["price_roll_max_7"] - prices[-1]) / (pr_range_7 + 1e-9)
+    row["price_drawup_7d"] = (prices[-1] - row["price_roll_min_7"]) / (pr_range_7 + 1e-9)
+    row["price_drawdown_30d"] = (row["price_roll_max_30"] - prices[-1]) / (pr_range_30 + 1e-9)
+    row["price_drawup_30d"] = (prices[-1] - row["price_roll_min_30"]) / (pr_range_30 + 1e-9)
+    
+    # 5. Volatility regime flags
+    vol_7 = row["price_volatility_7d"]
+    vol_7_p75 = float(pd.Series(prices[-31:] if len(prices) >= 31 else prices).pct_change().std() * 1.5)  # Approximation of 75th percentile
+    vol_7_p90 = vol_7_p75 * 1.2  # Approximation of 90th percentile
+    row["high_volatility_flag"] = int(vol_7 > vol_7_p75)
+    row["extreme_volatility_flag"] = int(vol_7 > vol_7_p90)
+    prev_vol_7 = float(pd.Series(prices[-15:-8]).std()) if len(prices) >= 15 else vol_7
+    row["vol_increasing"] = int(vol_7 > prev_vol_7)
+    
+    # 6. Shock duration and recovery (approximate from recent history)
+    row["shock_duration"] = 0  # Simplified: 0 if not currently in shock
+    if row["shock_1d"]:
+        shock_count = 0
+        for delta_val in reversed(deltas.tail(7).values):
+            if abs(delta_val) > (1.5 * (std30 + 1e-9)):
+                shock_count += 1
+            else:
+                break
+        row["shock_duration"] = float(shock_count)
+    row["days_since_shock"] = 0  # Simplified: 0 if currently in shock, count days after otherwise
+    
+    # 7. Cross-feature interactions (Price × Seasonality)
+    row["price_lag1_x_sin_month"] = prices[-1] * row["sin_month"]
+    row["price_lag1_x_cos_month"] = prices[-1] * row["cos_month"]
+    row["price_lag1_x_is_poya"] = prices[-1] * row["is_poya"]
+    row["price_lag1_x_is_pre_poya"] = prices[-1] * row["is_pre_poya"]
+    row["change_x_day_of_week"] = price_change_1d * (row["day_of_week"] - 2.5)
+    
+    # 8. Volatility × Macro interactions
+    if "LP 95_chg_1d" in row:
+        row["volatility_x_fuel_change"] = vol_7 * row["LP 95_chg_1d"]
+    else:
+        row["volatility_x_fuel_change"] = 0.0
+    
+    if "Inflation_Rate" in row:
+        row["volatility_x_inflation"] = vol_7 * (row["Inflation_Rate"] / 100.0 + 1e-9)
+    else:
+        row["volatility_x_inflation"] = 0.0
+    
+    if "avg_precip_mm_lag1" in row:
+        row["precip_x_momentum"] = row["avg_precip_mm_lag1"] * price_change_1d
+    else:
+        row["precip_x_momentum"] = 0.0
+    
+    # 9. Market sentiment indicators
+    row["velocity_of_change"] = price_change_1d - prev_change_1d
+    up_days = sum(1 for d in deltas.tail(7).values if d > 0)
+    down_days = sum(1 for d in deltas.tail(7).values if d < 0)
+    row["consecutive_up_days"] = float(up_days)
+    row["consecutive_down_days"] = float(down_days)
+    
+    # 10. Lag interaction with volatility
+    row["price_lag1_weighted_vol"] = prices[-1] * vol_7
+    row["price_lag7_weighted_vol"] = row["price_lag7"] * vol_7
+    
+    # 11. EWM momentum
+    momentum_series = pd.Series(deltas)
+    row["momentum_ewm7"] = float(momentum_series.ewm(span=7, adjust=False).mean().iloc[-1]) if len(momentum_series) > 0 else 0.0
+    row["momentum_ewm14"] = float(momentum_series.ewm(span=14, adjust=False).mean().iloc[-1]) if len(momentum_series) > 1 else 0.0
+    
+    # 12. Unexpected change detection
+    if "LP 95_chg_1d" in row and "avg_precip_mm_lag1" in row:
+        row["expected_change_macro"] = 0.5 * row["LP 95_chg_1d"] + 0.1 * row["avg_precip_mm_lag1"]
+        row["unexpected_change"] = price_change_1d - row["expected_change_macro"]
+    else:
+        row["expected_change_macro"] = 0.0
+        row["unexpected_change"] = price_change_1d
+
     # Production placeholders (no data yet)
     # (intentionally omitted — not used for training)
 
