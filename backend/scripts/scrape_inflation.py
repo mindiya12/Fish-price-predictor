@@ -55,7 +55,7 @@ def _get_pdf_links() -> list[str]:
     resp.raise_for_status()
     soup = BeautifulSoup(resp.text, "html.parser")
     
-    links = []
+    links: list[str] = []
     for a in soup.find_all("a", href=True):
         href = a["href"]
         if PDF_LINK_PATTERN.search(href):
@@ -63,7 +63,15 @@ def _get_pdf_links() -> list[str]:
                 href = "https://www.cbsl.gov.lk" + href
             links.append(href)
     
-    return links
+    # Deduplicate while preserving order (page sometimes repeats links)
+    seen = set()
+    uniq: list[str] = []
+    for u in links:
+        if u in seen:
+            continue
+        seen.add(u)
+        uniq.append(u)
+    return uniq
 
 
 def _extract_month_from_url(pdf_url: str) -> date | None:
@@ -86,35 +94,45 @@ def _parse_ccpi_from_pdf(pdf_bytes: bytes) -> dict:
     """
     result = {"ccpi_headline": None, "ccpi_food": None, "ccpi_non_food": None}
     
+    def _safe_float(val: str) -> float | None:
+        try:
+            x = float(val)
+        except Exception:
+            return None
+        # Sanity bounds for inflation rates (%). Avoid capturing years like 2026.
+        if x < -100 or x > 100:
+            return None
+        return x
+
     try:
         with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
             for page in pdf.pages:
                 text = page.extract_text() or ""
                 
                 # Look for "Headline Inflation" percentage figure
-                # Common pattern: "Headline Inflation: X.X%"
+                # Require a % sign after the number to avoid matching years (e.g., 2026)
                 headline_match = re.search(
-                    r"headline\s+inflation[^\d]*?([\-\d]+\.?\d*)\s*%?",
+                    r"headline\s+inflation[^%]{0,60}?(-?\d+(?:\.\d+)?)\s*%",
                     text, re.IGNORECASE
                 )
                 if headline_match:
-                    result["ccpi_headline"] = float(headline_match.group(1))
+                    result["ccpi_headline"] = _safe_float(headline_match.group(1))
                 
                 # Look for "Food Inflation"
                 food_match = re.search(
-                    r"food\s+inflation[^\d]*?([\-\d]+\.?\d*)\s*%?",
+                    r"food\s+inflation[^%]{0,60}?(-?\d+(?:\.\d+)?)\s*%",
                     text, re.IGNORECASE
                 )
                 if food_match:
-                    result["ccpi_food"] = float(food_match.group(1))
+                    result["ccpi_food"] = _safe_float(food_match.group(1))
 
                 # Non-food
                 non_food_match = re.search(
-                    r"non.food\s+inflation[^\d]*?([\-\d]+\.?\d*)\s*%?",
+                    r"non.food\s+inflation[^%]{0,60}?(-?\d+(?:\.\d+)?)\s*%",
                     text, re.IGNORECASE
                 )
                 if non_food_match:
-                    result["ccpi_non_food"] = float(non_food_match.group(1))
+                    result["ccpi_non_food"] = _safe_float(non_food_match.group(1))
                 
                 # Break early if we have what we need
                 if result["ccpi_headline"] is not None:

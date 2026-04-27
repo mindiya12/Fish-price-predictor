@@ -118,6 +118,13 @@ def load_training_data(engine) -> pd.DataFrame:
         if col in df.columns:
             df[col] = df[col].ffill().bfill()
 
+    # Guardrails: prevent bad scraped macro values (e.g., year parsed as inflation)
+    for col in ["Inflation_Rate", "CCPI_Food"]:
+        if col in df.columns:
+            s = pd.to_numeric(df[col], errors="coerce")
+            s = s.where((s >= -100) & (s <= 100), np.nan)
+            df[col] = s.ffill().bfill().fillna(0.0)
+
     # Calendar
     df["year"]         = df["date"].dt.year
     df["month"]        = df["date"].dt.month
