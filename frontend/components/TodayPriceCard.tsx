@@ -46,7 +46,7 @@ export default function TodayPriceCard() {
       }}>
         <div style={{ height: '100px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite', color: 'rgba(237, 244, 255, 0.6)' }}>
-            Loading today's price...
+            Loading today&apos;s price...
           </div>
         </div>
       </div>
