@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
-export async function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // 2. Admin Route Protection
+  // Admin Route Protection
   if (pathname.startsWith('/admin')) {
     const sessionCookie = request.cookies.get('admin_session')?.value;
     
