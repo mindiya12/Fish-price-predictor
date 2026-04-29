@@ -10,6 +10,7 @@ import HistoricalChartSection from "@/components/HistoricalChartSection";
 import MetricCard from "@/components/MetricCard";
 import UpdateBadge from "@/components/UpdateBadge";
 import DownloadCsvButton from "@/components/DownloadCsvButton";
+import TodayPriceCard from "@/components/TodayPriceCard";
 import { getLatestForecast } from "@/lib/api";
 
 export default function HomePage() {
@@ -147,6 +148,7 @@ export default function HomePage() {
       {forecastData.length > 0 && (
         <section style={{ marginBottom: '2.5rem' }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
+            <TodayPriceCard />
             <MetricCard
               title="Day 1 Forecast"
               value={today.prediction}

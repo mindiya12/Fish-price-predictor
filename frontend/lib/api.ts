@@ -22,3 +22,12 @@ export async function getHistory(fromDate: string, toDate: string, fish = "balay
 export function getDownloadUrl(fromDate: string, toDate: string, format: "csv" | "excel" = "csv") {
     return `${API_BASE_URL}/api/download/history?from=${fromDate}&to=${toDate}&format=${format}&fish=balaya&location=peliyagoda`;
 }
+
+// 4. Get today's price (actual or forecast)
+export async function getTodayPrice(fish = "balaya", location = "peliyagoda") {
+    const response = await fetch(`${API_BASE_URL}/api/today-price?fish=${fish}&location=${location}`);
+    if (!response.ok) {
+        throw new Error("Failed to fetch today's price");
+    }
+    return response.json();
+}
