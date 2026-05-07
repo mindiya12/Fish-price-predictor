@@ -2,8 +2,13 @@ name: Daily Fish Price Scrape & Retrain
 
 on:
   schedule:
-    - cron: '30 23 * * *'  # 23:30 UTC = 5:00 AM Sri Lanka Time (next day)
+    - cron: '0 0 * * *'  # 00:00 UTC = 5:30 AM Sri Lanka Time
   workflow_dispatch:      # Allows manual triggering
+    inputs:
+      run_backfill:
+        description: 'Set to "true" to run the backfill script for April 27 - May 6'
+        required: false
+        default: 'false'
 
 jobs:
   scrape_and_retrain:
@@ -35,13 +40,18 @@ jobs:
           
           echo "=== Starting Daily Data Collection Pipeline ==="
           echo "Timestamp: $(date)"
-          echo "Database URL: $([[ -z $DATABASE_URL ]] && echo 'NOT SET' || echo 'SET')"
           
           if [ -z "$DATABASE_URL" ]; then
             echo "ERROR: DATABASE_URL not set in GitHub secrets!"
             exit 1
           fi
           
+          # Optional Backfill
+          if [ "${{ github.event.inputs.run_backfill }}" == "true" ]; then
+            echo ">>> Running Backfill Script..."
+            python backend/scripts/backfill_prices.py || { echo "Backfill failed"; exit 1; }
+          fi
+
           echo ">>> Step 1: Scraping Weather..."
           python backend/scripts/scrape_weather.py || { echo "Weather scrape failed"; exit 1; }
 
@@ -94,7 +104,5 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const fs = require('fs');
             console.error("Daily scrape pipeline FAILED");
-            console.error("Check logs above for details");
-
+            console.error("Check logs in GitHub Actions for details");
