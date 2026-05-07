@@ -24,8 +24,8 @@ export default function PerformancePage() {
   useEffect(() => {
     const fetchPerf = async () => {
       try {
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
-        const res = await fetch(`${apiUrl}/api/admin/performance?days=30`).then(r => r.json());
+        const { API_BASE_URL } = await import('@/lib/api');
+        const res = await fetch(`${API_BASE_URL}/api/admin/performance?days=30`).then(r => r.json());
         if (res.status === 'success') {
           setData(res.data);
         }

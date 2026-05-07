@@ -11,7 +11,7 @@ import MetricCard from "@/components/MetricCard";
 import UpdateBadge from "@/components/UpdateBadge";
 import DownloadCsvButton from "@/components/DownloadCsvButton";
 import TodayPriceCard from "@/components/TodayPriceCard";
-import { getLatestForecast } from "@/lib/api";
+import { getLatestForecast, getDownloadUrl } from "@/lib/api";
 
 export default function HomePage() {
   const [forecastData, setForecastData] = useState<any[]>([]);
@@ -19,7 +19,7 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true);
 
   const nextUpdateIso = new Date(new Date().setHours(24, 0, 0, 0)).toISOString();
-  const forecastCsvDownloadUrl = `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/download/history?from=2025-01-01&to=2025-12-31&format=csv`;
+  const forecastCsvDownloadUrl = getDownloadUrl("2025-01-01", "2025-12-31", "csv");
 
   useEffect(() => {
     async function loadForecast() {

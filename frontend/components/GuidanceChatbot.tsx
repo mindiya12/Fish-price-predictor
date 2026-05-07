@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { API_BASE_URL } from "@/lib/api";
 
 type SuggestedAction = { label: string; href: string };
 type ChatResponse = { reply: string; intent: string; suggested_actions?: SuggestedAction[] };
@@ -10,10 +11,6 @@ type ChatResponse = { reply: string; intent: string; suggested_actions?: Suggest
 type ChatMessage =
   | { role: "assistant"; text: string; actions?: SuggestedAction[] }
   | { role: "user"; text: string };
-
-function getApiBase() {
-  return process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-}
 
 export default function GuidanceChatbot() {
   const pathname = usePathname();
@@ -53,7 +50,7 @@ export default function GuidanceChatbot() {
     setBusy(true);
 
     try {
-      const res = await fetch(`${getApiBase()}/api/chat`, {
+      const res = await fetch(`${API_BASE_URL}/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: text, page: pathname || "/" }),

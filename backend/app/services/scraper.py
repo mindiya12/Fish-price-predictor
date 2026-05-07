@@ -40,18 +40,36 @@ def download_cbsl_report(target_date: date) -> Optional[str]:
 
     # If already downloaded today, reuse it
     if os.path.exists(pdf_path) and os.path.getsize(pdf_path) > 0:
+        print(f"  Using cached PDF: {pdf_path}")
         return pdf_path
 
     try:
+        print(f"  Downloading from: {url}")
         r = requests.get(url, timeout=TIMEOUT)
-        if r.status_code == 200 and r.headers.get("content-type", "").lower().find("pdf") != -1:
-            with open(pdf_path, "wb") as f:
-                f.write(r.content)
-            return pdf_path
-    except Exception as e:
-        print(f"Error downloading CBSL report: {e}")
+        print(f"  Response status: {r.status_code}")
         
-    return None
+        if r.status_code == 200:
+            content_type = r.headers.get("content-type", "").lower()
+            print(f"  Content-Type: {content_type}")
+            
+            if "pdf" in content_type:
+                with open(pdf_path, "wb") as f:
+                    f.write(r.content)
+                print(f"  Saved: {pdf_path} ({len(r.content)} bytes)")
+                return pdf_path
+            else:
+                print(f"  ⚠ Response is not PDF (got {content_type})")
+                return None
+        else:
+            print(f"  ✗ HTTP {r.status_code}: Report might not be published yet")
+            return None
+            
+    except requests.exceptions.Timeout:
+        print(f"  ERROR: Request timeout after {TIMEOUT}s")
+        return None
+    except Exception as e:
+        print(f"  ERROR: {e}")
+        return None
 
 def extract_balaya_peliyagoda_today(pdf_path: str) -> Optional[float]:
     """
@@ -59,11 +77,18 @@ def extract_balaya_peliyagoda_today(pdf_path: str) -> Optional[float]:
     """
     try:
         with pdfplumber.open(pdf_path) as pdf:
+            print(f"  PDF opened successfully ({len(pdf.pages)} pages)")
+            
             if len(pdf.pages) < 2:
+                print(f"  ✗ PDF has only {len(pdf.pages)} page(s), expected at least 2")
                 return None
-            words = pdf.pages[1].extract_words()
+                
+            page = pdf.pages[1]
+            words = page.extract_words()
+            print(f"  Extracted {len(words)} words from page 2")
+            
     except Exception as e:
-        print(f"Error reading PDF: {e}")
+        print(f"  ERROR: Failed to read PDF: {e}")
         return None
 
     # Step 1: find 'Balaya' in the fish section
@@ -71,9 +96,17 @@ def extract_balaya_peliyagoda_today(pdf_path: str) -> Optional[float]:
     for w in words:
         if w['text'] == 'Balaya' and w['top'] > 550:
             balaya_y = w['top']
+            print(f"  Found 'Balaya' at y={balaya_y}")
             break
 
     if balaya_y is None:
+        print(f"  ✗ Could not find 'Balaya' text in expected region")
+        # Try to find it anywhere as fallback
+        for i, w in enumerate(words):
+            if w['text'] == 'Balaya':
+                print(f"    (Found 'Balaya' at y={w['top']}, but outside expected region)")
+                if i < len(words) - 5:
+                    print(f"    Nearby text: {[words[i+j]['text'] for j in range(1,6)]}")
         return None
 
     # Step 2: collect price fragments on the same row in Peliyagoda-Today band
@@ -83,17 +116,29 @@ def extract_balaya_peliyagoda_today(pdf_path: str) -> Optional[float]:
             x_mid = (w['x0'] + w['x1']) / 2
             if PELIYGODA_TODAY_X_MIN <= x_mid <= PELIYGODA_TODAY_X_MAX:
                 fragments.append((w['x0'], w['text']))
+                print(f"    Fragment: '{w['text']}' at x={x_mid}")
 
     if not fragments:
+        print(f"  ✗ No price fragments found in Peliyagoda Today column")
+        print(f"    Expected X range: {PELIYGODA_TODAY_X_MIN}-{PELIYGODA_TODAY_X_MAX}")
         return None
 
     fragments.sort(key=lambda t: t[0])
     raw = ''.join(t[1] for t in fragments)
+    print(f"  Assembled raw price: '{raw}'")
 
+    # Check for N/A marker
     if 'n' in raw.lower() or 'a' in raw.lower():
+        print(f"  ✗ Price marked as N/A")
         return None
 
-    return parse_price(raw)
+    price = parse_price(raw)
+    if price:
+        print(f"  ✓ Parsed price: Rs. {price}")
+    else:
+        print(f"  ✗ Could not parse price from: '{raw}'")
+    
+    return price
 
 
 def fetch_open_meteo_weather(target_date: date) -> Dict[str, Any]:

@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Bell, CheckCircle2, Loader2 } from 'lucide-react';
+import { API_BASE_URL } from '@/lib/api';
 
 export default function PriceAlertForm() {
   const [email, setEmail] = useState('');
@@ -13,7 +14,7 @@ export default function PriceAlertForm() {
     setStatus('loading');
     
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/alerts`, {
+      const response = await fetch(`${API_BASE_URL}/api/alerts`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

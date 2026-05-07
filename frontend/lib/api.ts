@@ -1,4 +1,4 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 // 1. Fetch the latest 7-day forecast
 export async function getLatestForecast(fish = "balaya", location = "peliyagoda") {

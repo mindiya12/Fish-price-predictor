@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { FileText, Download, Loader2 } from 'lucide-react';
+import { API_BASE_URL } from '@/lib/api';
 
 export default function ProcurementReportButton() {
   const [loading, setLoading] = useState(false);
@@ -9,7 +10,7 @@ export default function ProcurementReportButton() {
   const handleDownload = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/reports/procurement?fish=balaya&location=peliyagoda`);
+      const response = await fetch(`${API_BASE_URL}/api/reports/procurement?fish=balaya&location=peliyagoda`);
       if (!response.ok) throw new Error('Report generation failed');
       
       const blob = await response.blob();

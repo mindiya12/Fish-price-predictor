@@ -23,10 +23,10 @@ export default function AdminDashboard() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+        const { API_BASE_URL } = await import('@/lib/api');
         const [metricsRes, analyticsRes] = await Promise.all([
-          fetch(`${apiUrl}/api/admin/metrics`).then(r => r.json()),
-          fetch(`${apiUrl}/api/admin/analytics`).then(r => r.json())
+          fetch(`${API_BASE_URL}/api/admin/metrics`).then(r => r.json()),
+          fetch(`${API_BASE_URL}/api/admin/analytics`).then(r => r.json())
         ]);
         
         if (metricsRes.status === 'success') setMetrics(metricsRes.data);

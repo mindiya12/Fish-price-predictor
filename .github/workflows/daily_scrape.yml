@@ -12,6 +12,8 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -29,27 +31,70 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           PYTHONPATH: ${{ github.workspace }}/backend
         run: |
-          echo "Scraping Weather..."
-          python backend/scripts/scrape_weather.py
+          set -x  # Enable debug output
+          
+          echo "=== Starting Daily Data Collection Pipeline ==="
+          echo "Timestamp: $(date)"
+          echo "Database URL: $([[ -z $DATABASE_URL ]] && echo 'NOT SET' || echo 'SET')"
+          
+          if [ -z "$DATABASE_URL" ]; then
+            echo "ERROR: DATABASE_URL not set in GitHub secrets!"
+            exit 1
+          fi
+          
+          echo ">>> Step 1: Scraping Weather..."
+          python backend/scripts/scrape_weather.py || { echo "Weather scrape failed"; exit 1; }
 
-          echo "Scraping Fuel Prices..."
-          python backend/scripts/scrape_fuel_prices.py
+          echo ">>> Step 2: Scraping Fuel Prices..."
+          python backend/scripts/scrape_fuel_prices.py || { echo "Fuel scrape failed"; exit 1; }
 
-          echo "Scraping Inflation..."
-          python backend/scripts/scrape_inflation.py
+          echo ">>> Step 3: Scraping Inflation..."
+          python backend/scripts/scrape_inflation.py || { echo "Inflation scrape failed"; exit 1; }
 
-          echo "Scraping Fish Prices..."
-          python backend/scripts/scrape_fish_prices.py
+          echo ">>> Step 4: Scraping Fish Prices..."
+          python backend/scripts/scrape_fish_prices.py || { echo "Fish price scrape failed"; exit 1; }
 
-          echo "Retraining XGBoost Models..."
-          # Note: We run it from the backend dir to match path expectations in the script
+          echo ">>> Step 5: Retraining XGBoost Models..."
           export MODELS_DIR=${{ github.workspace }}/backend/models
           mkdir -p $MODELS_DIR
-          python backend/scripts/train_models_xgb.py
+          python backend/scripts/train_models_xgb.py || { echo "Model training failed"; exit 1; }
+          
+          echo "=== Pipeline Completed Successfully ==="
 
       - name: Commit and Push Updated Models
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add backend/models/*.pkl
-          git diff --quiet && git diff --staged --quiet || (git commit -m "Automated daily model update [skip ci]" && git push)
+          git add backend/models/*.pkl 2>/dev/null || true
+          git add forecast.csv 2>/dev/null || true
+          
+          if git diff --quiet && git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Automated daily model update [skip ci]" && git push
+            echo "Successfully pushed model updates"
+          fi
+
+      - name: Trigger Backend Deployment
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            console.log("Triggering backend deployment workflow...");
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'deploy-backend.yml',
+              ref: 'main'
+            });
+            console.log("Backend deployment triggered");
+
+      - name: Send Notification on Failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            console.error("Daily scrape pipeline FAILED");
+            console.error("Check logs above for details");
+
