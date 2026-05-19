@@ -20,7 +20,7 @@ export default function AboutPage() {
             </span>
           </h1>
           <p style={{ color: '#7A9CC9', fontSize: '1rem', lineHeight: 1.7, maxWidth: '520px' }}>
-            AI-powered fish price forecasting for Sri Lanka's wholesale markets — helping buyers, sellers, and researchers make smarter decisions.
+            AI-powered fish price forecasting for Sri Lanka&apos;s wholesale markets — helping buyers, sellers, and researchers make smarter decisions.
           </p>
         </div>
 
@@ -58,7 +58,7 @@ export default function AboutPage() {
           daily to deliver the most accurate 3-day forecast available.
         </p>
         <p style={{ color: '#7A9CC9', fontSize: '0.9rem', lineHeight: 1.85, margin: 0 }}>
-          Whether you're a wholesale buyer planning inventory, a retailer managing margins, or a researcher
+          Whether you&apos;re a wholesale buyer planning inventory, a retailer managing margins, or a researcher
           studying food price dynamics, FishPrice.LK gives you a data-driven edge.
         </p>
       </section>
@@ -164,7 +164,7 @@ export default function AboutPage() {
             <h2 style={{ fontSize: '1rem', fontWeight: 700, margin: 0, color: '#EDF4FF' }}>Contact</h2>
           </div>
           <p style={{ color: '#4A6285', fontSize: '0.82rem', lineHeight: 1.8, marginBottom: '1rem' }}>
-            Have questions, feedback, or want to collaborate? We'd love to hear from you.
+            Have questions, feedback, or want to collaborate? We&apos;d love to hear from you.
           </p>
           <a 
             href="mailto:contact@fishprice.lk" 
