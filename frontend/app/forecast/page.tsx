@@ -62,7 +62,7 @@ export default function ForecastPage() {
   // Generate client-side Excel (TSV) download URL
   const tsvContent = forecastData.length > 0
     ? ['Day\tDate\tPrediction (Rs)\tConfidence (Rs)\tLower\tUpper',
-       ...forecastData.map(d => `${d.day}\t${d.dateLabel}\t${d.prediction}\t${d.confidence}\t${d.lower ?? ''}\t${d.upper ?? ''}`)].join('\n')
+      ...forecastData.map(d => `${d.day}\t${d.dateLabel}\t${d.prediction}\t${d.confidence}\t${d.lower ?? ''}\t${d.upper ?? ''}`)].join('\n')
     : '';
   const excelBlob = typeof window !== 'undefined' && tsvContent
     ? new Blob([tsvContent], { type: 'application/vnd.ms-excel;charset=utf-8;' })
@@ -144,6 +144,9 @@ export default function ForecastPage() {
             accentColor="#10D9A0"
             icon={<Shield size={14} />}
           />
+          <MetricCard
+            title="Thisan Kulathilake"
+          />
           <div className="glass" style={{ padding: '1.5rem' }}>
             <p style={{ fontSize: '0.7rem', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#4A6285', marginBottom: '0.875rem' }}>Update Status</p>
             <UpdateBadge lastUpdatedIso={lastUpdatedIso} nextUpdateIso={nextUpdateIso} />
@@ -196,7 +199,7 @@ export default function ForecastPage() {
 
         <aside style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
           <PriceAlertForm />
-          
+
           <div className="glass" style={{ padding: '1.5rem' }}>
             <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: '#EDF4FF', marginBottom: '1rem' }}>Intelligence</h3>
             <ProcurementReportButton forecast={forecastData} />
