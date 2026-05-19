@@ -52,6 +52,23 @@ export default function ForecastPage() {
     forecastData.map((d) => ({ Day: d.day, Date: d.dateLabel, Prediction: d.prediction, Confidence: d.confidence, Lower: d.lower ?? "", Upper: d.upper ?? "" }))
   );
 
+  // Generate client-side CSV download URL
+  const csvContent = clipboardText;
+  const csvBlob = typeof window !== 'undefined' && forecastData.length > 0
+    ? new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    : null;
+  const csvUrl = csvBlob ? URL.createObjectURL(csvBlob) : undefined;
+
+  // Generate client-side Excel (TSV) download URL
+  const tsvContent = forecastData.length > 0
+    ? ['Day\tDate\tPrediction (Rs)\tConfidence (Rs)\tLower\tUpper',
+       ...forecastData.map(d => `${d.day}\t${d.dateLabel}\t${d.prediction}\t${d.confidence}\t${d.lower ?? ''}\t${d.upper ?? ''}`)].join('\n')
+    : '';
+  const excelBlob = typeof window !== 'undefined' && tsvContent
+    ? new Blob([tsvContent], { type: 'application/vnd.ms-excel;charset=utf-8;' })
+    : null;
+  const excelUrl = excelBlob ? URL.createObjectURL(excelBlob) : undefined;
+
   const today = forecastData[0];
   const avg = forecastData.length > 0 ? Math.round(forecastData.reduce((s, d) => s + d.prediction, 0) / forecastData.length) : 0;
   const rangeMin = forecastData.length > 0 ? Math.min(...forecastData.map(d => d.prediction)) : 0;
@@ -182,7 +199,7 @@ export default function ForecastPage() {
           
           <div className="glass" style={{ padding: '1.5rem' }}>
             <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: '#EDF4FF', marginBottom: '1rem' }}>Intelligence</h3>
-            <ProcurementReportButton />
+            <ProcurementReportButton forecast={forecastData} />
           </div>
 
           {/* ── EXPORT SECTION ── */}
@@ -195,8 +212,8 @@ export default function ForecastPage() {
             <p style={{ fontSize: '0.75rem', color: '#4A6285', marginBottom: '1.25rem' }}>Raw data for planning.</p>
             <DownloadActions
               clipboardText={clipboardText}
-              csvUrl={undefined}
-              excelUrl={undefined}
+              csvUrl={csvUrl}
+              excelUrl={excelUrl}
               csvLabel="Download CSV"
               excelLabel="Download Excel"
               copyLabel="Copy CSV"

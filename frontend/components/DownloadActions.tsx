@@ -36,17 +36,26 @@ export default function DownloadActions({
     }
   };
 
+  const downloadFile = (url: string, filename: string) => {
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
+
   const actions = [
     {
       label: csvLabel,
       icon: <Download size={15} />,
-      onClick: () => (csvUrl ? (window.location.href = csvUrl) : showToast("Not available")),
+      onClick: () => (csvUrl ? downloadFile(csvUrl, 'forecast_balaya.csv') : showToast("Not available")),
       color: '#00D4FF',
     },
     {
       label: excelLabel,
       icon: <FileSpreadsheet size={15} />,
-      onClick: () => (excelUrl ? (window.location.href = excelUrl) : showToast("Not available")),
+      onClick: () => (excelUrl ? downloadFile(excelUrl, 'forecast_balaya.xls') : showToast("Not available")),
       color: '#10D9A0',
     },
     {

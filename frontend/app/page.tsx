@@ -236,9 +236,24 @@ export default function HomePage() {
         </p>
       </section>
 
-      {/* Bottom action bar */}
       <section style={{ display: 'flex', gap: '0.875rem', flexWrap: 'wrap', marginBottom: '2rem' }}>
-        <Link href="/forecast" className="btn-primary" style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+        <Link 
+          href="/forecast" 
+          style={{ 
+            textDecoration: 'none', 
+            display: 'inline-flex', 
+            alignItems: 'center', 
+            gap: '0.5rem',
+            background: 'linear-gradient(135deg, #00B4A0, #00D4FF)',
+            color: '#070B14',
+            fontWeight: 700,
+            borderRadius: '0.625rem',
+            padding: '0.625rem 1.5rem',
+            border: 'none',
+            boxShadow: '0 0 16px rgba(0, 212, 255, 0.3)',
+            fontSize: '0.95rem',
+          }}
+        >
           View Full Forecast <ChevronRight size={16} />
         </Link>
         <DownloadCsvButton downloadUrl={forecastCsvDownloadUrl} />
