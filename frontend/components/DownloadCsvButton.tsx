@@ -15,7 +15,17 @@ export default function DownloadCsvButton({
       onClick={() => {
         window.location.href = downloadUrl;
       }}
-      className="rounded-lg border border-brand-neutral/20 bg-white px-4 py-2 text-sm text-brand-neutral shadow-subtle transition hover:bg-brand-light hover:border-brand-accent/50"
+      className="btn-ghost"
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '0.625rem 1.5rem',
+        borderRadius: '0.625rem',
+        fontSize: '0.95rem',
+        fontWeight: 600,
+        textDecoration: 'none'
+      }}
     >
       {label}
     </button>
